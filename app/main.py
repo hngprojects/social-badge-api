@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
 from app.routers.v1 import api_router
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.PROJECT_NAME)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+register_exception_handlers(app)
 
 
 @app.get("/")
