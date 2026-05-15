@@ -3,7 +3,7 @@ name = "social-badge-api"
 version = "0.1.0"
 description = "social badge backend api"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "aiosmtplib>=5.1.0",
     "alembic>=1.18.4",

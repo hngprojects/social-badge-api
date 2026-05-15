@@ -20,7 +20,7 @@
 | Type checking        | mypy (strict)                                     |
 | Tests                | `pytest` + `pytest-asyncio` + `httpx.AsyncClient` |
 | CI                   | GitHub Actions                                    |
-| Python               | 3.12+                                             |
+| Python               | 3.13+                                             |
 
 ---
 
@@ -76,7 +76,7 @@ social-badge-api/
 
 ### 1. Prerequisites
 
-- Python 3.12+
+- Python 3.13+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - **PostgreSQL**: A running instance (local, Docker, or remote).
 - **Redis**: A running instance for rate limiting.
