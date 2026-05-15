@@ -1,256 +1,274 @@
-# **FASTAPI Boilerplate**  
-A FastAPI boilerplate for efficient project setup.  
+# social-badge-api
 
-## **Cloning the Repository**  
-
-1. **Fork the repository** and clone it:  
-   ```sh
-   git clone https://github.com/<username>/hng_boilerplate_python_fastapi_web.git
-   ```
-2. **Navigate into the project directory**:  
-   ```sh
-   cd hng_boilerplate_python_fastapi_web
-   ```
-3. **Switch to the development branch** (if not already on `dev`):  
-   ```sh
-   git checkout dev
-   ```
-
-
-## **Setup Instructions**  
-
-1. **Create a virtual environment**:  
-   ```sh
-   python3 -m venv .venv
-   ```
-2. **Activate the virtual environment**:  
-   - On macOS/Linux:  
-     ```sh
-     source .venv/bin/activate
-     ```
-   - On Windows (PowerShell):  
-     ```sh
-     .venv\Scripts\Activate
-     ```
-3. **Install project dependencies**:  
-   ```sh
-   pip install -r requirements.txt
-   ```
-4. **Create a `.env` file** from `.env.sample`:  
-   ```sh
-   cp .env.sample .env
-   ```
-5. **Start the server**:  
-   ```sh
-   python main.py
-   ```
+  Backend API for the Social Badge platform — built with FastAPI, async SQLAlchemy 2.0, Alembic migrations, and `uv` for dependency management.
 
 ---
 
-## **Database Setup**  
+## Stack
 
-### **Replacing Placeholders in Database Setup**  
-
-When setting up the database, you need to replace **placeholders** with your actual values. Below is a breakdown of where to replace them:
-
----
-
-## **Step 1: Create a Database User**
-```sql
-CREATE USER user WITH PASSWORD 'your_password';
-```
-🔹 **Replace:**  
-- `user` → Your **preferred database username** (e.g., `fastapi_user`).  
-- `'your_password'` → A **secure password** for the user (e.g., `'StrongP@ssw0rd'`).  
-
-✅ **Example:**  
-```sql
-CREATE USER fastapi_user WITH PASSWORD 'StrongP@ssw0rd';
-```
+| Layer                | Choice                                            |
+| -------------------- | ------------------------------------------------- |
+| Web framework        | FastAPI (`fastapi[all]`)                          |
+| Server               | Uvicorn (via `fastapi dev` / `fastapi run`)       |
+| ORM                  | SQLAlchemy 2.0 (async)                            |
+| DB driver            | `asyncpg`                                         |
+| Migrations           | Alembic (async-aware)                             |
+| Config               | `pydantic-settings` (reads `.env`)                |
+| Package manager      | `uv`                                              |
+| Cache / Rate Limit   | Redis                                             |
+| Linting / Formatting | Ruff                                              |
+| Type checking        | mypy (strict)                                     |
+| Tests                | `pytest` + `pytest-asyncio` + `httpx.AsyncClient` |
+| CI                   | GitHub Actions                                    |
+| Python               | 3.12+                                             |
 
 ---
 
-## **Step 2: Create the Database**
-```sql
-CREATE DATABASE hng_fast_api;
-```
-🔹 **Replace:**  
-- `hng_fast_api` → Your **preferred database name** (e.g., `fastapi_db`).  
+## Project structure
 
-✅ **Example:**  
-```sql
-CREATE DATABASE fastapi_db;
 ```
+social-badge-api/
+├── app/
+│   ├── main.py                # FastAPI() instance, mounts the API router
+│   ├── core/
+│   │   ├── config.py          # Settings (env-driven via pydantic-settings)
+│   │   ├── exceptions/        # Global exception handlers
+│   │   └── rate_limit.py      # slowapi configuration
+│   ├── db/
+│   │   ├── session.py         # Async engine + session factory
+│   │   └── redis.py           # Redis connection pool
+│   ├── models/                # SQLAlchemy ORM models
+│   │   └── base.py            # DeclarativeBase
+│   ├── routers/
+│   │   └── v1/
+│   │       ├── __init__.py    # Aggregates all v1 endpoint routers
+│   │       └── health.py      # DB-backed health check endpoint
+│   ├── schemas/               # Pydantic request/response models
+│   ├── services/              # Business logic layer
+│   └── dependencies.py        # Shared FastAPI dependencies (Annotated types)
+├── alembic/
+│   ├── env.py                 # Wired to app.models.Base.metadata + settings
+│   ├── script.py.mako
+│   └── versions/              # Migration files land here
+├── tests/
+│   ├── conftest.py            # AsyncClient fixture
+│   └── test_health.py
+├── .github/
+│   ├── workflows/
+│   └── PULL_REQUEST_TEMPLATE.md
+├── .env.example
+├── .pre-commit-config.yaml    # Ruff hooks for local dev
+├── alembic.ini
+├── pyproject.toml
+└── uv.lock
+```
+
+### Why this layout
+
+- **`app/` package** — keeps imports absolute and clean (`from app.core.config import settings`).
+- **`routers/v1/`** — versioning is free; add `v2/` later without touching `v1/`.
+- **`models` / `schemas` / `services` split** — DB shape, API shape, and business logic stay decoupled.
+- **`dependencies.py`** — centralized dependency management using `Annotated` for cleaner endpoint signatures.
 
 ---
 
-## **Step 3: Grant Permissions**
-```sql
-GRANT ALL PRIVILEGES ON DATABASE hng_fast_api TO user;
+## Getting started
+
+### 1. Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **PostgreSQL**: A running instance (local, Docker, or remote).
+- **Redis**: A running instance for rate limiting.
+
+### 2a. Install
+
+```bash
+uv sync --dev
 ```
-🔹 **Replace:**  
-- `hng_fast_api` → The **database name you used** in Step 2.  
-- `user` → The **username you created** in Step 1.  
 
-✅ **Example:**  
-```sql
-GRANT ALL PRIVILEGES ON DATABASE fastapi_db TO fastapi_user;
+This installs both runtime and dev dependencies (`pytest`, `ruff`, `mypy`, etc.).
+
+### 2b. Set up pre-commit hooks
+
+```bash
+uv run pre-commit install
 ```
 
----
+This installs git hooks that run `ruff check --fix` and `ruff format` on every commit.
 
-## **Step 4: Update `.env` File**
-Edit the `.env` file to match your setup.
+### 3. Configure
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set the required variables. The database driver **must** be `postgresql+asyncpg`:
 
 ```env
-DATABASE_URL=postgresql://user:your_password@localhost/hng_fast_api
+ENVIRONMENT=local
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/social_badge
+REDIS_URL=redis://localhost:6379/0
+SECRET_KEY=your_super_secret_key_here
 ```
-🔹 **Replace:**  
-- `user` → Your **database username**.  
-- `your_password` → Your **database password**.  
-- `hng_fast_api` → Your **database name**.  
 
-✅ **Example:**  
-```env
-DATABASE_URL=postgresql://fastapi_user:StrongP@ssw0rd@localhost/fastapi_db
+### 4. Create the database
+
+```bash
+createdb social_badge
+# or, with psql:
+psql -U postgres -c "CREATE DATABASE social_badge;"
 ```
+
+### 5. Run migrations
+
+The starter ships with the base `DeclarativeBase`. Once you add your models, generate the first migration:
+
+```bash
+uv run alembic revision --autogenerate -m "initial"
+uv run alembic upgrade head
+```
+
+### 6. Start the dev server
+
+```bash
+uv run fastapi dev app/main.py
+```
+
+Open:
+
+- App root → http://127.0.0.1:8000
+- Health check → http://127.0.0.1:8000/api/v1/health
+- Swagger UI → http://127.0.0.1:8000/docs
 
 ---
 
-## **Step 5: Verify Connection**
-After setting up the database, test the connection:
+## Code quality
 
-```sh
-psql -U user -d hng_fast_api -h localhost
-```
-🔹 **Replace:**  
-- `user` → Your **database username**.  
-- `hng_fast_api` → Your **database name**.  
+### Linting and formatting
 
-✅ **Example:**  
-```sh
-psql -U fastapi_user -d fastapi_db -h localhost
+```bash
+# Check for lint errors
+uv run ruff check .
+
+# Apply formatting
+uv run ruff format .
 ```
 
-## **Step 6: Run database migrations**  
-   ```sh
-   alembic upgrade head
-   ```
-   _Do NOT run `alembic revision --autogenerate -m 'initial migration'` initially!_
+### Type checking
 
-## **Step 7: If making changes to database models, update migrations**  
-```sh
-   alembic revision --autogenerate -m 'your migration message'
-   alembic upgrade head
-   ```
-## **Step 8: Seed dummy data**  
-   ```sh
-   python3 seed.py
-   ```
+```bash
+uv run mypy .
+```
+
+### Running tests
+
+```bash
+uv run pytest
+```
+
+`pytest-asyncio` is set to `auto` mode in `pyproject.toml`, so async tests don't need a decorator. Tests use `httpx.AsyncClient` with `ASGITransport` — no live server required.
+
+**Isolation**: The test suite automatically truncates all database tables and resets Redis state after every single test, ensuring no data leakage between test runs.
 
 ---
 
-## **Adding Tables and Columns**  
+## CI
 
-1. **After creating new tables or modifying models**:  
-   - Run Alembic migrations:  
-     ```sh
-     alembic revision --autogenerate -m "Migration message"
-     alembic upgrade head
-     ```
-   - Ensure you **import new models** into `api/v1/models/__init__.py`.  
-   - You do NOT need to manually import them in `alembic/env.py`.
+GitHub Actions runs three jobs on every push and PR to `main`:
+
+| Job               | What it checks                                     |
+| ----------------- | -------------------------------------------------- |
+| **Lint & Format** | `ruff check` + `ruff format --check`               |
+| **Type Check**    | `mypy app/` (strict)                               |
+| **Test**          | `pytest` against a PostgreSQL 17 service container |
+
+All three must pass before a PR can be merged. The workflow is defined in `.github/workflows/ci.yml`.
 
 ---
 
-## **Adding New Routes**  
+## Migrations workflow
 
-1. **Check if a related route file already exists** in `api/v1/routes/`.  
-   - If yes, add your route inside the existing file.  
-   - If no, create a new file following the naming convention.  
-2. **Define the router** inside the new route file:  
-   - Include the prefix (without `/api/v1` since it's already handled).  
-3. **Register the router in `api/v1/routes/__init__.py`**:  
+Migrations are the single source of truth for your schema. Treat them as code: review, commit, and never edit applied ones.
+
+### Typical cycle
+
+```bash
+# 1. Edit a model in app/models/
+# 2. Generate a migration
+uv run alembic revision --autogenerate -m "add user table"
+
+# 3. Open alembic/versions/<hash>_add_user_table.py and REVIEW it.
+#    Autogenerate is not perfect — check column types, indexes, defaults.
+
+# 4. Apply
+uv run alembic upgrade head
+```
+
+### Useful commands
+
+| Command                                    | What it does                            |
+| ------------------------------------------ | --------------------------------------- |
+| `alembic revision --autogenerate -m "msg"` | Diff models vs DB and write a migration |
+| `alembic revision -m "msg"`                | Empty migration (write SQL by hand)     |
+| `alembic upgrade head`                     | Apply all pending migrations            |
+| `alembic upgrade +1` / `downgrade -1`      | Step forward/back one revision          |
+| `alembic current`                          | Show what's applied                     |
+| `alembic history`                          | Full migration chain                    |
+| `alembic downgrade base`                   | Wipe back to empty (dev only)           |
+
+### Rules of thumb
+
+- **Always review** the autogenerated file before applying. Alembic misses enum changes, server-side defaults, and some index renames.
+- **Never edit a migration after it's been applied** to a shared environment. Write a new one instead.
+- **Fill in `downgrade()`**, even if you never plan to run it. It's the cheapest safety net you'll get.
+- **Run migrations during deploy, not at app startup**. Run `alembic upgrade head` in CI/CD before booting the new app.
+- **Commit `alembic/versions/`** to git so the migration chain stays consistent across machines.
+
+---
+
+## Adding new code
+
+### A new endpoint
+
+1. Create the router module: `app/routers/v1/users.py`
+2. Define an `APIRouter()` and your routes.
+3. Register it in `app/routers/v1/__init__.py`:
+
    ```python
-   from .new_route import router as new_router
-   api_version_one.include_router(new_router)
+   from app.routers.v1 import health, users
+
+   api_router.include_router(users.router, prefix="/users", tags=["users"])
    ```
 
----
+### A new model
 
-## **Running Tests with Pytest**  
+1. Create `app/models/user.py`
+2. Subclass `Base` from `app.models.base`.
+3. Re-export from `app/models/__init__.py` so Alembic discovers it.
+4. Generate + apply a migration.
 
-### **Install Pytest**  
-Ensure `pytest` is installed in your virtual environment:  
-```sh
-pip install pytest
-```
+### A new Pydantic schema
 
-### **Run all tests in the project**  
-From the **project root directory**, run:  
-```sh
-pytest
-```
-This will automatically discover and execute all test files in the `tests/` directory.
-
-### **Run tests in a specific directory**  
-To run tests in a specific model directory (e.g., `tests/v1/user/`):  
-```sh
-pytest tests/v1/user/
-```
-
-### **Run a specific test file**  
-To run tests from a specific test file (e.g., `test_signup.py` inside `tests/v1/auth/`):  
-```sh
-pytest tests/v1/auth/test_signup.py
-```
-
-### **Run a specific test function**  
-If you want to run a specific test inside a file, use:  
-```sh
-pytest tests/v1/auth/test_signup.py::test_user_signup
-```
-
-### **Run tests with detailed output**  
-For verbose output, add the `-v` flag:  
-```sh
-pytest -v
-```
-
-### **Run tests and generate coverage report**  
-To check test coverage, install `pytest-cov`:  
-```sh
-pip install pytest-cov
-```
-Then run:  
-```sh
-pytest --cov=api
-```
+Put request/response models in `app/schemas/`. Use `SuccessResponse` and `ErrorResponse` from `app/schemas/response.py` for consistent API envelopes.
 
 ---
 
-## **Common Migration Issues & Solutions**  
+## Conventions
 
-### **Error: "Target database is not up to date."**  
-If you encounter this issue when running:  
-```sh
-alembic revision --autogenerate -m 'your migration message'
-```
-#### **Solution**:  
-Run the following command first:  
-```sh
-alembic upgrade head
-```
-Then retry:  
-```sh
-alembic revision --autogenerate -m 'your migration message'
-```
+- **Absolute imports only** (`from app.foo import bar`), never relative.
+- **Type hints everywhere.**
+- **Endpoints return Pydantic models**, using standardized response envelopes.
+- **Use `Annotated` dependencies** (see `app/dependencies.py`).
+- **`async def` for I/O bound tasks**.
 
 ---
 
-## **Contribution Guidelines**  
+## Production notes
 
-- **Test your endpoints and models** before pushing changes.  
-- **Push Alembic migrations** if database models are modified.  
-- Ensure your code **follows project standards** and **passes tests** before submitting a pull request.  
-
+- Replace `fastapi dev` with `fastapi run` in production.
+- Run `alembic upgrade head` as a deployment step.
+- Ensure `SECRET_KEY` and other sensitive variables are managed via environment secrets.
+- Set `echo=False` on the engine (already the default) and configure pool size to match your worker count.
+- Add CORS, request logging, and any middleware you need in `app/main.py`.
+- Keep `.env` out of git (already in `.gitignore`); use your platform's secret store in production.
