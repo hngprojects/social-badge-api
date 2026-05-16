@@ -1,3 +1,4 @@
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -306,7 +307,8 @@ async def test_submit_contact_form_returns_reference_id(
     reference_id = await submit_contact_form(payload)
 
     assert reference_id.startswith("CONTACT-")
-    assert len(reference_id) == len("CONTACT-2026-ABCDEF")
+    # Validate format: CONTACT-<4-digit year>-<6 alphanumeric chars>
+    assert re.match(r"^CONTACT-\d{4}-[A-Z0-9]{6}$", reference_id)
 
     mock_notification.assert_called_once()
     notification_kwargs = mock_notification.call_args.kwargs

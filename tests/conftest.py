@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 import pytest
 from fakeredis import FakeAsyncRedis
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -26,11 +27,11 @@ from app.models.base import Base
 
 
 def create_db_engine() -> AsyncEngine:
-    db_url = str(settings.DATABASE_URL)
-
-    # Force the use of the 'test' database to avoid dropping main database tables!
-    if not db_url.endswith("/test"):
-        db_url = db_url.rsplit("/", 1)[0] + "/test"
+    url = make_url(str(settings.DATABASE_URL))
+    # Force the use of the 'test' database to avoid dropping main database tables.
+    if url.database != "test":
+        url = url.set(database="test")
+    db_url = str(url)
 
     test_engine = create_async_engine(
         db_url,
@@ -104,7 +105,8 @@ async def client(
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_session, None)
+    app.dependency_overrides.pop(get_redis_client, None)
 
 
 @pytest.fixture

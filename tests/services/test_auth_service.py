@@ -71,7 +71,7 @@ def _make_forgot_payload(email: str = "jane@example.com") -> ForgotPasswordReque
 
 @patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
 async def test_signup_creates_user(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -89,7 +89,7 @@ async def test_signup_creates_user(
 
 @patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
 async def test_signup_hashes_password(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -107,7 +107,7 @@ async def test_signup_hashes_password(
 
 @patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
 async def test_signup_creates_email_auth_provider(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -130,7 +130,7 @@ async def test_signup_creates_email_auth_provider(
 
 @patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
 async def test_signup_stores_verification_token(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -156,7 +156,7 @@ async def test_signup_sends_verification_email(
 
 @patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
 async def test_signup_rejects_duplicate_email(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -397,7 +397,7 @@ async def test_signin_unverified_email_raises_email_not_verified(
 
 @patch("app.services.auth.send_account_lock_email", new_callable=AsyncMock)
 async def test_signin_locks_after_max_failed_attempts(
-    mock_lock_email: AsyncMock,
+    _mock_lock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:
@@ -489,7 +489,7 @@ async def test_reset_attempts_clears_redis_key(
 
 @patch("app.services.auth.send_password_reset_email", new_callable=AsyncMock)
 async def test_request_password_reset_stores_token_for_existing_user(
-    mock_email: AsyncMock,
+    _mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
 ) -> None:

@@ -41,7 +41,7 @@ def test_consecutive_tokens_are_unique() -> None:
 
 
 async def test_stored_token_is_retrievable(fake_redis: FakeAsyncRedis) -> None:
-    raw, token_hash = generate_token()
+    _raw, token_hash = generate_token()
     user_id = "550e8400-e29b-41d4-a716-446655440000"
 
     await store_verification_token(fake_redis, token_hash, user_id)
@@ -52,7 +52,7 @@ async def test_stored_token_is_retrievable(fake_redis: FakeAsyncRedis) -> None:
 
 async def test_token_is_deleted_after_fetching(fake_redis: FakeAsyncRedis) -> None:
     """Verification tokens are single-use."""
-    raw, token_hash = generate_token()
+    _raw, token_hash = generate_token()
     user_id = "550e8400-e29b-41d4-a716-446655440000"
 
     await store_verification_token(fake_redis, token_hash, user_id)
@@ -63,7 +63,7 @@ async def test_token_is_deleted_after_fetching(fake_redis: FakeAsyncRedis) -> No
 
 
 async def test_expired_token_returns_none(fake_redis: FakeAsyncRedis) -> None:
-    raw, token_hash = generate_token()
+    _raw, token_hash = generate_token()
     user_id = "550e8400-e29b-41d4-a716-446655440000"
 
     # Store with 1-second TTL and wait for expiry

@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.exceptions import (
@@ -404,6 +405,12 @@ async def logout(
         httponly=True,
         samesite=settings.COOKIE_SAMESITE,
     )
+    response.delete_cookie(
+        key=settings.ACCESS_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
 
 
 @router.post(
@@ -462,9 +469,12 @@ async def forgot_password(
         200: {"description": "Email verified successfully"},
         400: {"model": ErrorResponse, "description": "User already verified"},
         401: {"model": ErrorResponse, "description": "Token expired or invalid"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("10/minute")
 async def verify_email(
+    request: Request,
     session: DBSession,
     redis: RedisClient,
     payload: VerifyEmailRequest,
@@ -497,7 +507,7 @@ async def verify_email(
     session.add(user)
     try:
         await session.commit()
-    except Exception:
+    except SQLAlchemyError:
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
