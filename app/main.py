@@ -21,8 +21,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await redis_pool.disconnect()
 
 
-app = FastAPI(title=settings.PROJECT_NAME)
-app.state.limiter = limiter
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+
 
 app.add_middleware(
     CORSMiddleware,

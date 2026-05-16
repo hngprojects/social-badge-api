@@ -69,18 +69,17 @@ async def publish_template(
     if template.is_published:
         raise TemplateAlreadyPublishedError
 
-    template.is_published = True
-    template.published_at = datetime.now(UTC)
-
+    now = datetime.now(UTC)
     if template.share_slug is None:
         for _ in range(settings.MAX_SLUG_RETRIES):
+            template.is_published = True
+            template.published_at = now
             template.share_slug = generate_share_slug()
             try:
                 await session.flush()
                 break
             except IntegrityError:
                 await session.rollback()
-                template.share_slug = None
                 continue
         else:
             raise RuntimeError("Could not generate a unique share slug")

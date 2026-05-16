@@ -42,9 +42,9 @@ def _upload_sync(data: bytes, filename: str) -> str:
             overwrite=True,
             invalidate=True,
         )
+        url: str = result["secure_url"]
     except Exception as exc:
         raise CloudinaryUploadError(str(exc)) from exc
-    url: str = result["secure_url"]
     return url
 
 

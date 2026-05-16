@@ -98,7 +98,7 @@ class LoginRequest(BaseModel):
     email: EmailStr = Field(
         ...,
         description="A valid email address that will be used for login.",
-        json_schema_extra={"exmaple": "jane@example.com"},
+        json_schema_extra={"example": "jane@example.com"},
     )
     password: str = Field(
         ...,

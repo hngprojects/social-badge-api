@@ -1,12 +1,14 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class SuccessResponse[DataT](BaseModel):
-    status: str = "success"
+    status: Literal["success"] = "success"
     message: str
     data: DataT | None = None
 
 
 class ErrorResponse(BaseModel):
-    status: str = "error"
+    status: Literal["error"] = "error"
     message: str
