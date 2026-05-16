@@ -31,7 +31,7 @@ def create_db_engine() -> AsyncEngine:
     # Force the use of the 'test' database to avoid dropping main database tables.
     if url.database != "test":
         url = url.set(database="test")
-    db_url = str(url)
+    db_url = url.render_as_string(hide_password=False)
 
     test_engine = create_async_engine(
         db_url,
