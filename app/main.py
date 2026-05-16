@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await redis_pool.disconnect()
 
 
-app = FastAPI(title=settings.PROJECT_NAME)
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 
 app.add_middleware(

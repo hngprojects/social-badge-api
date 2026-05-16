@@ -43,11 +43,8 @@ async def get_verified_user_id(
     token_hash: str,
 ) -> str | None:
     key = f"{settings.TOKEN_PREFIX}{token_hash}"
-    user_id = await redis.get(key)
-    if user_id is not None:
-        await redis.delete(key)
-        return str(user_id)
-    return None
+    user_id = await redis.getdel(key)
+    return str(user_id) if user_id else None
 
 
 def create_access_token(user_id: UUID) -> str:
