@@ -27,6 +27,14 @@ from app.models.base import Base
 
 
 def create_db_engine() -> AsyncEngine:
+    """
+    Create an asynchronous SQLAlchemy engine tied to the test database.
+    
+    If the configured DATABASE_URL specifies a different database, the URL is modified to use the database named "test" before constructing the engine. The returned engine is created with connection pooling disabled.
+    
+    Returns:
+        AsyncEngine: An async SQLAlchemy engine connected to the test database.
+    """
     url = make_url(str(settings.DATABASE_URL))
     # Force the use of the 'test' database to avoid dropping main database tables.
     if url.database != "test":

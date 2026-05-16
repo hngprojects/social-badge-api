@@ -613,7 +613,14 @@ async def published_template(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> OrganiserTemplate:
-    """Seed a published organiser template with a slug, logo, and hashtags."""
+    """
+    Create and persist a published organiser template with a predefined share slug, logo, caption, destination link, and hashtags.
+    
+    The fixture adds the template and two associated hashtag records to the database and returns the refreshed, persisted OrganiserTemplate.
+    
+    Returns:
+        OrganiserTemplate: The persisted organiser template with `is_published=True`, a `share_slug` of "abcdef123456", `logo_url`, `default_caption`, `destination_link`, and associated `TemplateHashtag` entries for "#HNGTechFest" and "#2026".
+    """
     from app.models.templates import TemplateHashtag
 
     template = OrganiserTemplate(

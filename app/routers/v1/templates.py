@@ -267,7 +267,25 @@ async def upload_logo(
     current_user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> SuccessResponse[LogoUploadResponse]:
-    """Upload or replace the logo for a template instance."""
+    """
+    Upload or replace the logo for a template instance.
+    
+    Validates the uploaded file is a PNG or JPEG and does not exceed 2 MB, verifies the file signature, uploads the image, and returns the resulting logo URL.
+    
+    Parameters:
+        instance_id (UUID): ID of the template instance to update.
+        file (UploadFile): Multipart file upload; must be PNG or JPG and at most 2 MB.
+    
+    Returns:
+        SuccessResponse[LogoUploadResponse]: Response containing the uploaded logo URL.
+    
+    Raises:
+        HTTPException: 415 if the file content type or file signature is not PNG/JPG.
+        HTTPException: 413 if the file size exceeds 2 MB.
+        HTTPException: 404 if the template instance does not exist.
+        HTTPException: 403 if the current user is not permitted to modify the instance.
+        HTTPException: 502 if the upload service fails or rejects the file.
+    """
     if file.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -366,7 +384,13 @@ async def get_participant_page(
     session: DBSession,
     slug: str,
 ) -> SuccessResponse[PublicParticipantPageResponse]:
-    """Return public-facing template data for the participant page."""
+    """
+    Retrieve public participant-page data for a published template identified by its share slug.
+    
+    Returns:
+        SuccessResponse[PublicParticipantPageResponse]: A success response whose `data` contains the template's
+        `title`, `canvas_data`, `logo_url`, `default_caption`, `destination_link`, and a list of `hashtags`.
+    """
     try:
         template = await get_public_template_by_slug(
             session=session,

@@ -122,12 +122,24 @@ async def upload_template_logo(
     organiser_id: UUID,
     image_data: bytes,
 ) -> str:
-    """Upload a logo for a template instance and return the Cloudinary URL.
-
+    """
+    Upload a new logo for a template instance and update the instance to point to the uploaded asset.
+    
+    Uploads the provided image to Cloudinary, updates the template instance's `logo_url` and `logo_public_id` in the database, commits the change, and performs best-effort cleanup of any previous or orphaned Cloudinary assets when necessary.
+    
+    Parameters:
+        session (AsyncSession): Async database session used to load and persist the template instance.
+        instance_id (UUID): ID of the template instance to update.
+        organiser_id (UUID): ID of the organiser performing the upload; used to validate ownership.
+        image_data (bytes): Raw image bytes to upload as the new logo.
+    
+    Returns:
+        str: The Cloudinary URL of the newly uploaded logo.
+    
     Raises:
-        TemplateInstanceNotFoundError: if the instance does not exist.
-        TemplateInstanceForbiddenError: if the instance belongs to another organiser.
-        CloudinaryUploadError: if the Cloudinary upload fails.
+        TemplateInstanceNotFoundError: If no non-deleted template instance with `instance_id` exists.
+        TemplateInstanceForbiddenError: If the instance exists but does not belong to `organiser_id`.
+        CloudinaryUploadError: If the upload to Cloudinary fails.
     """
     result = await session.execute(
         select(OrganiserTemplate).where(
@@ -188,6 +200,20 @@ async def get_public_template_by_slug(
     session: AsyncSession,
     slug: str,
 ) -> OrganiserTemplate:
+    """
+    Retrieve a published, non-deleted organiser template by its public share slug.
+    
+    The returned template includes its related hashtags (eagerly loaded).
+    
+    Parameters:
+        slug (str): The public share slug to look up.
+    
+    Returns:
+        OrganiserTemplate: The matching published organiser template.
+    
+    Raises:
+        PublicTemplateNotFoundError: If no published, non-deleted template exists for the given slug.
+    """
     result = await session.execute(
         select(OrganiserTemplate)
         .options(selectinload(OrganiserTemplate.hashtags))
