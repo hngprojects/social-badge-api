@@ -14,18 +14,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- App ---
     PROJECT_NAME: str = "flare-tag-be"
     ENVIRONMENT: str = "local"
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: str = "http://localhost:3000"
     ALLOWED_ORIGINS: list[str] | str = []
 
-    # --- Database & Cache ---
     DATABASE_URL: PostgresDsn
     REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore[assignment]
 
-    # --- Auth / JWT ---
     SECRET_KEY: str
     ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
@@ -33,47 +30,51 @@ class Settings(BaseSettings):
     VERIFICATION_TOKEN_TTL_MINUTES: int = 30
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 30
 
-    # --- Cookies ---
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     ACCESS_COOKIE: str = "access_token"
     REFRESH_COOKIE: str = "refresh_token"
 
-    # --- Rate Limiting ---
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_WINDOW: int = 900  # 15 minutes in seconds
+    FAILED_LOGIN_PREFIX: str = "failed_login:"
 
-    # --- Email (Resend) ---
     RESEND_API_KEY: str = "re_dummy_api_key"
     RESEND_FROM_EMAIL: str = "noreply@yourdomain.com"
     CONTACT_RECIPIENT_EMAIL: str = ""
+    CONTACT_NOTIFICATION_SUBJECT: str = "New Contact Form Submission — Flare Tag"
+    CONTACT_CONFIRMATION_SUBJECT: str = "We received your message — Flare Tag"
+    VERIFICATION_SUBJECT: str = "Verify your Flare Tag account"
+    ACCOUNT_LOCK_SUBJECT: str = "Your Flare Tag account has been locked"
+    PASSWORD_RESET_SUBJECT: str = "Reset your Flare Tag password"  # noqa: S105
 
-    # --- Email (SMTP Fallback) ---
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
 
-    # --- Google OAuth ---
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    GOOGLE_AUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"  # noqa: S105
+    GOOGLE_USER_INFO_URL: str = "https://www.googleapis.com/oauth2/v3/userinfo"
     GOOGLE_OAUTH_STATE_TTL_MINUTES: int = 10
 
-    # --- Redis keys ---
     TOKEN_PREFIX: str = "verify:"  # noqa: S105
     PASSWORD_RESET_PREFIX: str = "pwd_reset:"  # noqa: S105
     GOOGLE_STATE_PREFIX: str = "oauth:google:state:"
     GOOGLE_EXCHANGE_PREFIX: str = "oauth:google:exchange:"
     BLACKLIST_PREFIX: str = "blacklist:jti:"
 
-    # --- Cloudinary ---
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
+    LOGO_FOLDER: str = "template-logos"
 
-    # --- Validators ---
+    MAX_SLUG_RETRIES: int = 5
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, val: Any) -> list[str] | str:
