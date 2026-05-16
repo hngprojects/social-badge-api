@@ -21,4 +21,3 @@ async def get_layouts(
 ) -> SuccessResponse[PaginatedLayouts]:
     layouts = await list_layouts(session, page, limit)
     return SuccessResponse(message="Layouts retrieved successfully", data=layouts)
-    

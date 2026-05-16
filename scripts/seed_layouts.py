@@ -6,20 +6,25 @@ Usage:
 """
 
 import asyncio
-import sys
+import logging
 import os
+import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sqlalchemy import delete, select
+
 from app.db.session import AsyncSessionLocal
 from app.models.templates import PlatformTemplate
 
+logger = logging.getLogger(__name__)
 
 TEMPLATES = [
     {
         "title": "Classic",
-        "description": "A clean, minimal badge with name and title on a white background.",
+        "description": (
+            "A clean, minimal badge with name and title on a white background."
+        ),
         "thumbnail_url": "https://placehold.co/400x200?text=Classic",
         "canvas_data": {"background": "#ffffff", "font": "Inter"},
         "is_active": True,
@@ -35,12 +40,17 @@ TEMPLATES = [
         "title": "Gradient",
         "description": "Modern gradient background with smooth colour transitions.",
         "thumbnail_url": "https://placehold.co/400x200?text=Gradient",
-        "canvas_data": {"background": "linear-gradient(135deg, #667eea, #764ba2)", "font": "Inter"},
+        "canvas_data": {
+            "background": "linear-gradient(135deg, #667eea, #764ba2)",
+            "font": "Inter",
+        },
         "is_active": True,
     },
     {
         "title": "Corporate",
-        "description": "Professional layout suited for enterprise and conference badges.",
+        "description": (
+            "Professional layout suited for enterprise and conference badges."
+        ),
         "thumbnail_url": "https://placehold.co/400x200?text=Corporate",
         "canvas_data": {"background": "#f5f5f5", "font": "Georgia"},
         "is_active": True,
@@ -50,7 +60,7 @@ TEMPLATES = [
         "description": "Vintage-style badge with warm tones and serif typography.",
         "thumbnail_url": "https://placehold.co/400x200?text=Retro",
         "canvas_data": {"background": "#f5e6c8", "font": "Courier"},
-        "is_active": False,  # inactive — tests that filter works
+        "is_active": False,
     },
 ]
 
@@ -60,22 +70,27 @@ async def seed() -> None:
         await session.execute(delete(PlatformTemplate))
         await session.commit()
 
-        templates = [PlatformTemplate(**t) for t in TEMPLATES]
+        templates = [PlatformTemplate(**template) for template in TEMPLATES]
         session.add_all(templates)
         await session.commit()
 
         result = await session.execute(
-            select(PlatformTemplate).order_by(PlatformTemplate.name)
+            select(PlatformTemplate).order_by(PlatformTemplate.title)
         )
         seeded = result.scalars().all()
 
-        print(f"\nSeeded {len(seeded)} platform templates:\n")
-        for t in seeded:
-            status = "active  " if t.is_active else "inactive"
-            print(f"  [{status}]  {t.name:<15}  {t.description[:50]}")
-        print()
+        logger.info("\nSeeded %s platform templates:\n", len(seeded))
+        for template in seeded:
+            status = "active  " if template.is_active else "inactive"
+            logger.info(
+                "  [%s]  %-15s  %s",
+                status,
+                template.title,
+                template.description[:50],
+            )
+        logger.info("")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     asyncio.run(seed())
-    

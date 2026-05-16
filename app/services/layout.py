@@ -52,4 +52,3 @@ async def list_layouts(
         total=total or 0,
         layouts=layouts,
     )
-    

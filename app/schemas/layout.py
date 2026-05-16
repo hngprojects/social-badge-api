@@ -1,4 +1,5 @@
 import uuid
+
 from pydantic import BaseModel, Field
 
 
@@ -30,4 +31,3 @@ class PaginatedLayouts(BaseModel):
     limit: int
     total: int
     layouts: list[LayoutResponse]
-    
