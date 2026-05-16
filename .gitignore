@@ -178,3 +178,5 @@ alembic/versions
 
 .vscode
 public/
+
+.ruff_cache/

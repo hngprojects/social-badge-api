@@ -1,224 +1,119 @@
-import itertools
-import sys, os
-import warnings
-from unittest.mock import patch
+import os
+from collections.abc import AsyncIterator
+
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from alembic.command import upgrade
-from alembic.config import Config
-from decouple import config as decouple_config
-from datetime import datetime, timezone
-
-
-
-# Global IP generator (supports 16 million+ unique IPs)
-IP_GENERATOR = itertools.cycle(
-    (f"127.{i//65536}.{(i//256)%256}.{i%256}" for i in itertools.count())
+from fakeredis import FakeAsyncRedis
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
+from sqlalchemy.pool import NullPool
+
+# Must be set before app imports: Settings() is constructed at import time
+# and raises ValidationError if SECRET_KEY is missing.
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
+
+from app.core.config import settings
+from app.db.redis import get_redis_client
+from app.db.session import get_session
+from app.main import app  # noqa: E402
+
+# Import all models to ensure they're registered with Base.metadata
+from app.models.base import Base
+
+
+def create_db_engine() -> AsyncEngine:
+    url = make_url(str(settings.DATABASE_URL))
+    # Force the use of the 'test' database to avoid dropping main database tables.
+    if url.database != "test":
+        url = url.set(database="test")
+    db_url = str(url)
+
+    test_engine = create_async_engine(
+        db_url,
+        poolclass=NullPool,
+    )
+    return test_engine
+
+
+@pytest.fixture(scope="session")
+async def setup_db() -> AsyncIterator[None]:
+    # Create all tables in the test database
+    test_engine = create_db_engine()
+
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield
+
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    await test_engine.dispose()
+
+
+@pytest.fixture
+async def db_session(setup_db: None) -> AsyncIterator[AsyncSession]:
+    test_engine = create_db_engine()
+
+    TestingSessionLocal = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    async with TestingSessionLocal() as session:
+        yield session
+
+    async with test_engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
+
+    await test_engine.dispose()
+
+
+@pytest.fixture
+def fake_redis() -> FakeAsyncRedis:
+    return FakeAsyncRedis(decode_responses=True)
+
 
 @pytest.fixture(autouse=True)
-def auto_mock_client_ip():
-    """Automatically mock client IP for all tests"""
-    with patch("fastapi.Request.client") as mock_client:
-        mock_client.host = next(IP_GENERATOR)
-        yield
+def reset_limiter() -> None:
+    from app.core.rate_limit import limiter
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Get the project root directory
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-@pytest.fixture(scope='module')
-def mock_send_email():
-    with patch("api.core.dependencies.email_sender.send_email") as mock_email_sending:
-        with patch("fastapi.BackgroundTasks.add_task") as add_task_mock:
-            add_task_mock.side_effect = lambda func, *args, **kwargs: func(*args, **kwargs)
-            yield mock_email_sending
+    limiter.reset()
 
 
-@pytest.fixture(scope="session")
-def db_engine():
+@pytest.fixture
+async def client(
+    db_session: AsyncSession, fake_redis: FakeAsyncRedis
+) -> AsyncIterator[AsyncClient]:
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        yield db_session
 
-   # Create a PostgreSQL test database engine.
-    db_url = decouple_config('DB_URL')
+    async def override_get_redis() -> AsyncIterator[FakeAsyncRedis]:
+        yield fake_redis
 
-    engine = create_engine(db_url)
-    yield engine
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_redis_client] = override_get_redis
 
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
 
-@pytest.fixture(scope="session")
-def apply_migrations(db_engine):
-    """Apply all migrations to the test database."""
-    # Configure Alembic
-    config = Config(os.path.join(project_root, "alembic.ini"))
-
-    # Set the SQLAlchemy URL to the test database
-    config.set_main_option("sqlalchemy.url", str(db_engine.url))
-
-    # Run the migrations
-    upgrade(config, "head")
-    return
+    app.dependency_overrides.pop(get_session, None)
+    app.dependency_overrides.pop(get_redis_client, None)
 
 
-@pytest.fixture(scope="function")
-def db_session(db_engine, apply_migrations):
-
-    #Create a new database session for a test.
-    connection = db_engine.connect()
-
-    # Begin a transaction
-    transaction = connection.begin()
-
-    # Create a session bound to the connection
-    Session = sessionmaker(bind=connection)
-    session = Session()
-
-    yield session
-
-    # Rollback the transaction after the test completes
-    session.close()
-    transaction.rollback()
-    connection.close()
-
-    # Blog Model Test Fixtures
-
-    @pytest.fixture
-    def test_user(db_session):
-        """Create a test user for blog tests."""
-        from api.v1.models.user import User
-
-        # Create a unique email with timestamp to avoid conflicts
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        user = User(
-            email=f"testuser_{timestamp}@example.com",
-            username=f"testuser_{timestamp}",
-            first_name="Test",
-            last_name="User",
-            is_active=True,
-            is_verified=True,
-            is_deleted=False,
-            is_superadmin=False
-        )
-
-        db_session.add(user)
-        db_session.commit()
-        db_session.refresh(user)
-
-        yield user
-
-    @pytest.fixture
-    def test_blog(db_session, test_user):
-        """Create a test blog post."""
-        from api.v1.models.blog import Blog
-
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        blog = Blog(
-            author_id=test_user.id,
-            title=f"Test Blog {timestamp}",
-            content="This is test content for the blog post.",
-            excerpt="Test excerpt",
-            tags="test,blog,indexing",
-            is_deleted=False
-        )
-
-        db_session.add(blog)
-        db_session.commit()
-        db_session.refresh(blog)
-
-        yield blog
-
-    @pytest.fixture
-    def test_multiple_blogs(db_session, test_user):
-        """Create multiple test blog posts for a user."""
-        from api.v1.models.blog import Blog
-
-        blogs = []
-        for i in range(5):
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            blog = Blog(
-                author_id=test_user.id,
-                title=f"Test Blog {i} {timestamp}",
-                content=f"This is test content for blog post {i}.",
-                excerpt=f"Test excerpt {i}",
-                tags=f"test,blog{i},indexing",
-                is_deleted=(i % 4 == 0)  # Make some blogs "deleted" for testing
-            )
-
-            db_session.add(blog)
-            blogs.append(blog)
-
-        db_session.commit()
-
-        # Refresh all blogs to get their IDs
-        for blog in blogs:
-            db_session.refresh(blog)
-
-        yield blogs
-
-    @pytest.fixture
-    def test_blog_like(db_session, test_user, test_blog):
-        """Create a test blog like."""
-        from api.v1.models.blog import BlogLike
-
-        like = BlogLike(
-            blog_id=test_blog.id,
-            user_id=test_user.id,
-            ip_address="127.0.0.1"
-        )
-
-        db_session.add(like)
-        db_session.commit()
-        db_session.refresh(like)
-
-        yield like
-
-    @pytest.fixture
-    def test_blog_dislike(db_session, test_user, test_blog):
-        """Create a test blog dislike."""
-        from api.v1.models.blog import BlogDislike
-
-        dislike = BlogDislike(
-            blog_id=test_blog.id,
-            user_id=test_user.id,
-            ip_address="127.0.0.1"
-        )
-
-        db_session.add(dislike)
-        db_session.commit()
-        db_session.refresh(dislike)
-
-        yield dislike
-
-    @pytest.fixture
-    def test_multiple_users(db_session):
-        """Create multiple test users for advanced testing."""
-        from api.v1.models.user import User
-
-        users = []
-        for i in range(3):
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            user = User(
-                email=f"testuser{i}_{timestamp}@example.com",
-                username=f"testuser{i}_{timestamp}",
-                first_name=f"Test{i}",
-                last_name=f"User{i}",
-                is_active=True,
-                is_verified=True,
-                is_deleted=False,
-                is_superadmin=(i == 0)  # Make one user a superadmin
-            )
-
-            db_session.add(user)
-            users.append(user)
-
-        db_session.commit()
-
-        # Refresh all users to get their IDs
-        for user in users:
-            db_session.refresh(user)
-
-        yield users
-
-        # No need to delete as transaction is rolled back
+@pytest.fixture
+def valid_signup_payload() -> dict[str, str]:
+    return {
+        "first_name": "API Test",
+        "last_name": "User",
+        "email": "apitest@example.com",
+        "password": "StrongPassword1!",  # noqa: S106
+    }
