@@ -605,3 +605,172 @@ async def test_upload_logo_rate_limit(
     assert response.status_code == 429
     data = response.json()
     assert data["status"] == "error"
+
+
+@pytest.fixture
+async def published_template(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Seed a published organiser template with a slug, logo, and hashtags."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="HNG Tech Fest 2026",
+        canvas_data={"layout": "bold-v1", "accent": "#FF5733"},
+        logo_url="https://res.cloudinary.com/demo/image/upload/template-logos/fest.png",
+        default_caption="I'm attending HNG Tech Fest 2026! 🚀",
+        destination_link="https://techfest.example.com",
+        is_published=True,
+        share_slug="abcdef123456",
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#HNGTechFest", "#2026"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_get_participant_page_success(
+    client: AsyncClient,
+    published_template: OrganiserTemplate,
+) -> None:
+    response = await client.get(
+        f"/api/v1/templates/p/{published_template.share_slug}",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template data retrieved successfully."
+    assert data["data"]["title"] == "HNG Tech Fest 2026"
+    assert data["data"]["canvas_data"] == {"layout": "bold-v1", "accent": "#FF5733"}
+    assert data["data"]["logo_url"] == (
+        "https://res.cloudinary.com/demo/image/upload/template-logos/fest.png"
+    )
+    assert data["data"]["default_caption"] == "I'm attending HNG Tech Fest 2026! 🚀"
+    assert data["data"]["destination_link"] == "https://techfest.example.com"
+    assert sorted(data["data"]["hashtags"]) == ["#2026", "#HNGTechFest"]
+
+
+async def test_get_participant_page_no_hashtags(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Published template with no hashtags should return an empty list."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="No Tags Event",
+        canvas_data={"layout": "minimal-v1"},
+        is_published=True,
+        share_slug="notags000001",
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    response = await client.get("/api/v1/templates/p/notags000001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["hashtags"] == []
+
+
+async def test_get_participant_page_unpublished(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Slug exists but template is in draft state — should return 404."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,
+        share_slug="draft0000001",
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/p/draft0000001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_nonexistent_slug(
+    client: AsyncClient,
+) -> None:
+    """A completely random slug should return 404."""
+    response = await client.get("/api/v1/templates/p/doesnotexist1")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_soft_deleted(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Published but soft-deleted template should return 404."""
+    from datetime import UTC, datetime
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Deleted Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=True,
+        share_slug="deleted00001",
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/p/deleted00001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_no_auth_required(
+    client: AsyncClient,
+    published_template: OrganiserTemplate,
+) -> None:
+    """No Bearer token sent — should still return 200, not 401."""
+    response = await client.get(
+        f"/api/v1/templates/p/{published_template.share_slug}",
+    )
+    assert response.status_code == 200
+
+
+async def test_get_participant_page_was_published_then_unpublished(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Slug that was once published but has since been unpublished returns 404."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Past Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,  # was published, now unpublished
+        share_slug="waspub000001",  # slug preserved from when it was published
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/p/waspub000001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."

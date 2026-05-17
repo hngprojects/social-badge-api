@@ -5,12 +5,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import (
     NotTemplateOwnerError,
     OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
+    PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
     TemplateInstanceForbiddenError,
     TemplateInstanceNotFoundError,
@@ -180,3 +182,24 @@ async def upload_template_logo(
         public_id,
     )
     return logo_url
+
+
+async def get_public_template_by_slug(
+    session: AsyncSession,
+    slug: str,
+) -> OrganiserTemplate:
+    result = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.hashtags))
+        .where(
+            OrganiserTemplate.share_slug == slug,
+            OrganiserTemplate.is_published.is_(True),
+            OrganiserTemplate.deleted_at.is_(None),
+        )
+    )
+    template = result.scalars().first()
+    if template is None:
+        raise PublicTemplateNotFoundError
+
+    logger.info("Public lookup for slug %s resolved to template %s", slug, template.id)
+    return template

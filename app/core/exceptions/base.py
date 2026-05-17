@@ -89,3 +89,9 @@ class CloudinaryUploadError(Exception):
     """Raised when a Cloudinary upload or deletion fails."""
 
     pass
+
+
+class PublicTemplateNotFoundError(Exception):
+    """Raised when a public slug does not resolve to a published template."""
+
+    pass
