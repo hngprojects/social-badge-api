@@ -8,7 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
+    EmailDeliveryError,
     EmailNotVerifiedError,
     GoogleOAuthError,
     InvalidCredentialsError,
@@ -156,12 +158,12 @@ async def register(
     summary="Resend account verification email",
     description=(
         "Resends the account verification email if the user exists and has not "
-        "yet verified their email address. If the email is already verified or "
-        "not registered, the request will still succeed silently."
+        "yet verified their email address. Returns 400 if the email is already "
+        "verified. Non-existent emails are silently ignored to prevent enumeration."
     ),
     responses={
         200: {
-            "description": "Verification email resent (or silently ignored)",
+            "description": "Verification email resent",
             "content": {
                 "application/json": {
                     "example": {
@@ -175,6 +177,10 @@ async def register(
                 }
             },
         },
+        400: {
+            "model": ErrorResponse,
+            "description": "Email address is already verified",
+        },
         422: {
             "model": ErrorResponse,
             "description": "Validation error in the payload",
@@ -182,6 +188,10 @@ async def register(
         429: {
             "model": ErrorResponse,
             "description": "Rate limit exceeded",
+        },
+        502: {
+            "model": ErrorResponse,
+            "description": "Email delivery failed",
         },
     },
 )
@@ -192,7 +202,18 @@ async def resend_verification(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
-    await resend_verification_email(session, redis, payload)
+    try:
+        await resend_verification_email(session, redis, payload)
+    except EmailAlreadyVerifiedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This email address has already been verified.",
+        ) from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Verification email could not be delivered. Please try again later.",
+        ) from exc
 
     return SuccessResponse(
         message=(
@@ -460,6 +481,7 @@ async def logout(
         },
         422: {"model": ErrorResponse, "description": "Validation error in the payload"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+        502: {"model": ErrorResponse, "description": "Email delivery failed"},
     },
 )
 @limiter.limit("10/minute")
@@ -469,7 +491,13 @@ async def forgot_password(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
-    await request_password_reset(session, redis, payload)
+    try:
+        await request_password_reset(session, redis, payload)
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Password reset email could not be delivered. Please try again later.",
+        ) from exc
 
     return SuccessResponse(
         message=(

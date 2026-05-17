@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
     EmailDeliveryError,
     EmailNotVerifiedError,
@@ -122,15 +123,12 @@ async def resend_verification_email(
         return
 
     if user.is_email_verified:
-        return
+        raise EmailAlreadyVerifiedError
 
     raw_token, token_hash = generate_token()
     await store_verification_token(redis, token_hash, str(user.id))
 
-    try:
-        await send_verification_email(user.email, raw_token)
-    except EmailDeliveryError:
-        pass
+    await send_verification_email(user.email, raw_token)
 
 
 async def reset_password(
@@ -387,10 +385,7 @@ async def request_password_reset(
     raw_token, token_hash = generate_token()
     await store_password_reset_token(redis, token_hash, str(user.id))
 
-    try:
-        await send_password_reset_email(payload.email, raw_token)
-    except EmailDeliveryError:
-        logger.warning("Failed to send password reset email to %s", payload.email)
+    await send_password_reset_email(payload.email, raw_token)
 
 
 async def build_google_auth_url(redis: Redis) -> str:
