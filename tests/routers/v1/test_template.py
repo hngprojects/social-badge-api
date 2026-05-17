@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
 from app.models import OrganiserTemplate, PlatformTemplate, User
@@ -25,8 +26,6 @@ async def test_user(db_session: AsyncSession) -> User:
     await db_session.refresh(user)
     return user
 
-
-from app.core.config import settings
 
 @pytest.fixture
 def auth_cookies(test_user: User) -> dict[str, str]:

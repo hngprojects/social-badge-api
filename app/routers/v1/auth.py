@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -50,6 +51,8 @@ from app.services.auth import (
     signin,
     signup,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -158,12 +161,12 @@ async def register(
     summary="Resend account verification email",
     description=(
         "Resends the account verification email if the user exists and has not "
-        "yet verified their email address. Returns 400 if the email is already "
-        "verified. Non-existent emails are silently ignored to prevent enumeration."
+        "yet verified their email address. Always returns a uniform 200 to "
+        "prevent account enumeration."
     ),
     responses={
         200: {
-            "description": "Verification email resent",
+            "description": "Request accepted",
             "content": {
                 "application/json": {
                     "example": {
@@ -177,10 +180,6 @@ async def register(
                 }
             },
         },
-        400: {
-            "model": ErrorResponse,
-            "description": "Email address is already verified",
-        },
         422: {
             "model": ErrorResponse,
             "description": "Validation error in the payload",
@@ -188,10 +187,6 @@ async def register(
         429: {
             "model": ErrorResponse,
             "description": "Rate limit exceeded",
-        },
-        502: {
-            "model": ErrorResponse,
-            "description": "Email delivery failed",
         },
     },
 )
@@ -205,15 +200,17 @@ async def resend_verification(
     try:
         await resend_verification_email(session, redis, payload)
     except EmailAlreadyVerifiedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This email address has already been verified.",
-        ) from exc
+        logger.info(
+            "Resend-verification skipped: %s is already verified",
+            payload.email,
+            exc_info=exc,
+        )
     except EmailDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Verification email could not be delivered. Please try again later.",
-        ) from exc
+        logger.warning(
+            "Resend-verification email delivery failed for %s",
+            payload.email,
+            exc_info=exc,
+        )
 
     return SuccessResponse(
         message=(
@@ -481,7 +478,6 @@ async def logout(
         },
         422: {"model": ErrorResponse, "description": "Validation error in the payload"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
-        502: {"model": ErrorResponse, "description": "Email delivery failed"},
     },
 )
 @limiter.limit("10/minute")
@@ -494,10 +490,11 @@ async def forgot_password(
     try:
         await request_password_reset(session, redis, payload)
     except EmailDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Password reset email could not be delivered. Please try again later.",
-        ) from exc
+        logger.warning(
+            "Password reset email delivery failed for %s",
+            payload.email,
+            exc_info=exc,
+        )
 
     return SuccessResponse(
         message=(
