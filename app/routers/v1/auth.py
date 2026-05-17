@@ -202,13 +202,13 @@ async def resend_verification(
     except EmailAlreadyVerifiedError as exc:
         logger.info(
             "Resend-verification skipped: %s is already verified",
-            payload.email,
+            hash_token(payload.email),
             exc_info=exc,
         )
     except EmailDeliveryError as exc:
         logger.warning(
             "Resend-verification email delivery failed for %s",
-            payload.email,
+            hash_token(payload.email),
             exc_info=exc,
         )
 
@@ -492,7 +492,7 @@ async def forgot_password(
     except EmailDeliveryError as exc:
         logger.warning(
             "Password reset email delivery failed for %s",
-            payload.email,
+            hash_token(payload.email),
             exc_info=exc,
         )
 
