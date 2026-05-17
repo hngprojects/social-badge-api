@@ -26,11 +26,13 @@ async def test_user(db_session: AsyncSession) -> User:
     return user
 
 
+from app.core.config import settings
+
 @pytest.fixture
-def auth_headers(test_user: User) -> dict[str, str]:
-    """Return a Bearer token header for the test user."""
+def auth_cookies(test_user: User) -> dict[str, str]:
+    """Return a cookie dictionary for the test user."""
     token = create_access_token(test_user.id)
-    return {"Authorization": f"Bearer {token}"}
+    return {settings.ACCESS_COOKIE: token}
 
 
 @pytest.fixture
@@ -49,13 +51,13 @@ async def platform_template(db_session: AsyncSession) -> PlatformTemplate:
 
 async def test_create_instance_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     platform_template: PlatformTemplate,
     test_user: User,
 ) -> None:
     response = await client.post(
         "/api/v1/templates/instances",
-        headers=auth_headers,
+        cookies=auth_cookies,
         json={"platform_template_id": str(platform_template.id)},
     )
     assert response.status_code == 201
@@ -79,12 +81,12 @@ async def test_create_instance_unauthenticated(
 
 
 async def test_create_instance_platform_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
         "/api/v1/templates/instances",
-        headers=auth_headers,
+        cookies=auth_cookies,
         json={"platform_template_id": str(fake_id)},
     )
     assert response.status_code == 404
@@ -94,11 +96,11 @@ async def test_create_instance_platform_template_not_found(
 
 
 async def test_create_instance_missing_field(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     response = await client.post(
         "/api/v1/templates/instances",
-        headers=auth_headers,
+        cookies=auth_cookies,
         json={},
     )
     assert response.status_code == 422
@@ -125,12 +127,12 @@ async def organiser_template(
 
 async def test_publish_template_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     response = await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
@@ -152,12 +154,12 @@ async def test_publish_template_unauthenticated(
 
 
 async def test_publish_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
         f"/api/v1/templates/{fake_id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert response.status_code == 404
     assert response.json()["message"] == "Template not found."
@@ -204,7 +206,7 @@ async def test_publish_template_not_owner(
     other_token = create_access_token(other.id)
     response = await client.post(
         f"/api/v1/templates/{template.id}/publish",
-        headers={"Authorization": f"Bearer {other_token}"},
+        cookies={settings.ACCESS_COOKIE: other_token},
     )
     assert response.status_code == 403
     assert response.json()["message"] == "You do not own this template."
@@ -212,16 +214,16 @@ async def test_publish_template_not_owner(
 
 async def test_publish_template_already_published(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     response = await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert response.status_code == 409
     assert response.json()["message"] == "Template is already published."
@@ -229,18 +231,18 @@ async def test_publish_template_already_published(
 
 async def test_unpublish_template_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     publish_response = await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     original_slug = publish_response.json()["data"]["share_slug"]
 
     response = await client.post(
         f"/api/v1/templates/{organiser_template.id}/unpublish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
@@ -253,34 +255,34 @@ async def test_unpublish_template_success(
 
 async def test_republish_preserves_slug(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     first = await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     original_slug = first.json()["data"]["share_slug"]
 
     await client.post(
         f"/api/v1/templates/{organiser_template.id}/unpublish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     second = await client.post(
         f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert second.status_code == 200
     assert second.json()["data"]["share_slug"] == original_slug
 
 
 async def test_unpublish_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
         f"/api/v1/templates/{fake_id}/unpublish",
-        headers=auth_headers,
+        cookies=auth_cookies,
     )
     assert response.status_code == 404
 
@@ -351,23 +353,23 @@ async def other_user(db_session: AsyncSession) -> User:
 
 
 @pytest.fixture
-def other_auth_headers(other_user: User) -> dict[str, str]:
+def other_auth_cookies(other_user: User) -> dict[str, str]:
     token = create_access_token(other_user.id)
-    return {"Authorization": f"Bearer {token}"}
+    return {settings.ACCESS_COOKIE: token}
 
 
 @patch("app.services.template.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_success(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -385,7 +387,7 @@ async def test_upload_logo_replaces_existing(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance_with_logo: OrganiserTemplate,
 ) -> None:
     """Uploading a new logo should delete the old Cloudinary asset first."""
@@ -393,7 +395,7 @@ async def test_upload_logo_replaces_existing(
 
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance_with_logo.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.jpg", _FAKE_JPEG, "image/jpeg")},
     )
 
@@ -406,12 +408,12 @@ async def test_upload_logo_replaces_existing(
 async def test_upload_logo_unsupported_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.gif", b"fake-gif-bytes", "image/gif")},
     )
 
@@ -425,7 +427,7 @@ async def test_upload_logo_unsupported_type(
 async def test_upload_logo_too_large(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     # PNG magic + enough padding to exceed 2 MB.
@@ -433,7 +435,7 @@ async def test_upload_logo_too_large(
 
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", oversized, "image/png")},
     )
 
@@ -459,11 +461,11 @@ async def test_upload_logo_unauthenticated(
 async def test_upload_logo_instance_not_found(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
 ) -> None:
     response = await client.put(
         f"/api/v1/templates/instances/{uuid.uuid4()}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -476,13 +478,13 @@ async def test_upload_logo_instance_not_found(
 
 async def test_upload_logo_forbidden(
     client: AsyncClient,
-    other_auth_headers: dict[str, str],
+    other_auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     """A user who does not own the instance should get 403."""
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=other_auth_headers,
+        cookies=other_auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -495,7 +497,7 @@ async def test_upload_logo_forbidden(
 async def test_upload_logo_rejects_spoofed_mime_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     """File declared as image/png but containing GIF magic bytes should be rejected."""
@@ -503,7 +505,7 @@ async def test_upload_logo_rejects_spoofed_mime_type(
 
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("evil.png", gif_bytes, "image/png")},
     )
 
@@ -515,7 +517,7 @@ async def test_upload_logo_rejects_spoofed_mime_type(
 async def test_upload_logo_soft_deleted_instance_returns_404(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     db_session: AsyncSession,
     test_user: User,
     platform_template: PlatformTemplate,
@@ -536,7 +538,7 @@ async def test_upload_logo_soft_deleted_instance_returns_404(
 
     response = await client.put(
         f"/api/v1/templates/instances/{deleted_instance.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -550,7 +552,7 @@ async def test_upload_logo_uploads_before_deleting_old(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance_with_logo: OrganiserTemplate,
 ) -> None:
     """New asset must be uploaded and persisted before the old one is deleted."""
@@ -568,7 +570,7 @@ async def test_upload_logo_uploads_before_deleting_old(
 
     response = await client.put(
         f"/api/v1/templates/instances/{template_instance_with_logo.id}/logo",
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -584,7 +586,7 @@ async def test_upload_logo_rate_limit(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
@@ -593,13 +595,13 @@ async def test_upload_logo_rate_limit(
     for _ in range(10):
         await client.put(
             url,
-            headers=auth_headers,
+            cookies=auth_cookies,
             files={"file": ("logo.png", _FAKE_PNG, "image/png")},
         )
 
     response = await client.put(
         url,
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
     assert response.status_code == 429

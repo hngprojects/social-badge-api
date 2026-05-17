@@ -313,24 +313,31 @@ async def logout_session(
     await _blacklist_access_token_if_valid(redis, access_token)
 
 
-def set_access_cookie(response: Response, access_token: str) -> None:
+def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> None:
     response.set_cookie(
-        key=settings.ACCESS_COOKIE,
-        value=access_token,
+        key=key,
+        value=value,
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
+        max_age=max_age,
+    )
+
+
+def set_access_cookie(response: Response, access_token: str) -> None:
+    _set_auth_cookie(
+        response,
+        key=settings.ACCESS_COOKIE,
+        value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
-    response.set_cookie(
+    _set_auth_cookie(
+        response,
         key=settings.REFRESH_COOKIE,
         value=refresh_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
