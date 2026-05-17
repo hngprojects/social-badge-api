@@ -9,6 +9,8 @@ import app.models  # noqa: F401  ensure all models are registered
 from alembic import context
 from app.core.config import settings
 from app.models import Base
+from services.badges.db.base import Base as BadgesBase  # noqa: F401 ensure badges models are registered
+from services.badges.models import BadgeGenerationJob  # noqa: F401 ensure model is registered
 
 config = context.config
 config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL))
@@ -17,7 +19,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
-target_metadata = Base.metadata
+target_metadata = [Base.metadata, BadgesBase.metadata]
 
 
 def run_migrations_offline() -> None:

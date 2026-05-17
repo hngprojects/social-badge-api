@@ -1,15 +1,16 @@
 from datetime import datetime
 import uuid
 
-from enums.job_status import JobStatus
+from services.badges.enums.job_status import JobStatus
 from sqlalchemy import Column, String, DateTime, Text, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 
-from db.base import Base
+from services.badges.db.base import Base
 
 
 class BadgeGenerationJob(Base):
     __tablename__ = "badge_generation_jobs"
+    __table_args__ = {"extend_existing": True}
 
     job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     template_id = Column(String, nullable=False, index=True)
