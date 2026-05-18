@@ -51,10 +51,11 @@ def test_platform_templates_seed_titles_are_unique() -> None:
 
 
 def test_platform_templates_seed_entries_have_required_keys() -> None:
-    expected_keys = {"title", "canvas_data", "thumbnail_url"}
+    expected_keys = {"title", "category", "canvas_data", "thumbnail_url"}
     for entry in PLATFORM_TEMPLATES_SEED:
         assert set(entry.keys()) == expected_keys
         assert isinstance(entry["title"], str) and entry["title"]
+        assert isinstance(entry["category"], str) and entry["category"]
         assert isinstance(entry["canvas_data"], dict)
         assert "layout" in entry["canvas_data"]
 
@@ -110,6 +111,7 @@ async def test_seed_platform_templates_inserts_only_missing_titles(
     db_session.add(
         PlatformTemplate(
             title="Creative",
+            category="Design",
             canvas_data=pre_existing_canvas,
             thumbnail_url=None,
         )

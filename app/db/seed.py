@@ -17,21 +17,25 @@ logger = logging.getLogger(__name__)
 PLATFORM_TEMPLATES_SEED = [
     {
         "title": "Creative",
+        "category": "Design",
         "canvas_data": {"layout": "creative-v1"},
         "thumbnail_url": None,
     },
     {
         "title": "Professional",
+        "category": "Business",
         "canvas_data": {"layout": "professional-v1"},
         "thumbnail_url": None,
     },
     {
         "title": "Minimal",
+        "category": "Design",
         "canvas_data": {"layout": "minimal-v1"},
         "thumbnail_url": None,
     },
     {
         "title": "Bold",
+        "category": "Design",
         "canvas_data": {"layout": "bold-v1"},
         "thumbnail_url": None,
     },
