@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from io import BytesIO
 
@@ -61,7 +61,7 @@ class TestJobLifecycle:
         # Job transitions to COMPLETED
         job.status = JobStatus.COMPLETED
         job.badge_image_url = url
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         mock_db.commit()
         
         assert job.status == JobStatus.COMPLETED
@@ -91,7 +91,7 @@ class TestJobLifecycle:
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error_message = str(e)
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             mock_db.commit()
         
         assert job.status == JobStatus.FAILED
@@ -151,7 +151,7 @@ class TestJobLifecycle:
         mock_session_factory.return_value = mock_db
         
         job_id = str(uuid.uuid4())
-        created_time = datetime.utcnow()
+        created_time = datetime.now(timezone.utc)
         
         job = MagicMock()
         job.job_id = job_id
@@ -162,7 +162,7 @@ class TestJobLifecycle:
         assert job.created_at == created_time
         
         # Simulate completion
-        completion_time = datetime.utcnow()
+        completion_time = datetime.now(timezone.utc)
         job.completed_at = completion_time
         
         # Verify timestamps

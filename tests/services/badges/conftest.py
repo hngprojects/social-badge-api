@@ -1,6 +1,6 @@
 import pytest
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 from io import BytesIO
 
@@ -50,7 +50,7 @@ def sample_job():
         status=JobStatus.QUEUED,
         badge_image_url=None,
         error_message=None,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         completed_at=None
     )
 
@@ -66,8 +66,8 @@ def sample_job_completed():
         status=JobStatus.COMPLETED,
         badge_image_url="/badges/badge_12345.png",
         error_message=None,
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc)
     )
     return job
 
@@ -83,8 +83,8 @@ def sample_job_failed():
         status=JobStatus.FAILED,
         badge_image_url=None,
         error_message="Failed to fetch profile image",
-        created_at=datetime.utcnow(),
-        completed_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc)
     )
 
 

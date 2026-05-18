@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from services.badges.models.badge_model import BadgeGenerationJob
@@ -101,14 +101,14 @@ class TestBadgeGenerationJobModel:
         assert job.error_message is None
 
     def test_created_at_defaults_to_utcnow(self):
-        """Test that created_at defaults to datetime.utcnow()."""
-        before = datetime.utcnow()
+        """Test that created_at defaults to timezone-aware datetime.now(timezone.utc)."""
+        before = datetime.now(timezone.utc)
         job = BadgeGenerationJob(
             template_id="template_001",
             participant_name="Test User",
             participant_photo_url="https://example.com/photo.jpg"
         )
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc)
         
         # Note: actual default function is set in column definition
         # This test verifies the model structure
@@ -266,8 +266,8 @@ class TestBadgeGenerationJobEdgeCases:
             status=JobStatus.COMPLETED,
             badge_image_url="/badges/badge_complete.png",
             error_message=None,
-            created_at=datetime.utcnow(),
-            completed_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc)
         )
         
         assert job.job_id is not None

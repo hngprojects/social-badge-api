@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from services.badges.db.session import SessionLocal
@@ -44,7 +44,7 @@ def process_badge_generation(job_id: str):
         # update DB
         job.status = JobStatus.COMPLETED
         job.badge_image_url = url
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
 
         db.commit()
         logger.info(f"Job {job_id} completed successfully")
