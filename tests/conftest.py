@@ -109,7 +109,14 @@ async def client(
         async def custom_request(*args: Any, **kwargs: Any) -> Any:
             cookies = kwargs.pop("cookies", None)
             if cookies:
+                old_cookies = dict(async_client.cookies)
+                async_client.cookies.clear()
                 async_client.cookies.update(cookies)
+                try:
+                    return await original_request(*args, **kwargs)
+                finally:
+                    async_client.cookies.clear()
+                    async_client.cookies.update(old_cookies)
             return await original_request(*args, **kwargs)
 
         async_client.request = custom_request  # type: ignore[method-assign]

@@ -1,4 +1,5 @@
 from typing import Annotated
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
@@ -472,9 +473,10 @@ async def list_templates(
     ),
 ) -> SuccessResponse[PlatformTemplateListResponse]:
     """Return active platform templates with pagination and optional category filter."""
+    normalised_category = category.strip().lower() if category is not None else None
     try:
         templates, total = await list_platform_templates(
-            session, category=category, page=page, limit=limit
+            session, category=normalised_category, page=page, limit=limit
         )
     except ValueError as exc:
         raise HTTPException(
@@ -483,20 +485,17 @@ async def list_templates(
         ) from exc
 
     base_url = "/api/v1/templates/platform"
-    query_params = []
-    if category:
-        query_params.append(f"category={category}")
-    query_params.append(f"limit={limit}")
+    query_params: dict[str, str | int] = {"limit": limit}
+    if normalised_category:
+        query_params["category"] = normalised_category
 
     prev_link = None
     if page > 1:
-        prev_params = [f"page={page - 1}"] + query_params
-        prev_link = f"{base_url}?{'&'.join(prev_params)}"
+        prev_link = f"{base_url}?{urlencode({'page': page - 1, **query_params})}"
 
     next_link = None
     if page * limit < total:
-        next_params = [f"page={page + 1}"] + query_params
-        next_link = f"{base_url}?{'&'.join(next_params)}"
+        next_link = f"{base_url}?{urlencode({'page': page + 1, **query_params})}"
 
     return SuccessResponse(
         message="Platform templates retrieved successfully.",

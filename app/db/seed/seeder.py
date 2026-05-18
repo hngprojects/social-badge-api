@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import select
 
-from app.db.seed import PLATFORM_TEMPLATES_SEED
+from app.db.seed.definitions import PLATFORM_TEMPLATES_SEED
 from app.db.session import AsyncSessionLocal
 from app.models import PlatformTemplate
 
@@ -45,13 +45,22 @@ async def seed_platform_templates() -> None:
                 inserted += 1
 
         await session.commit()
-        if inserted == 0:
-            logger.info(
-                "Platform templates already seeded (%d found).",
-                len(existing),
-            )
+        if inserted == 0 and updated == 0:
+             logger.info(
+                 "Platform templates already seeded (%d found).",
+                 len(existing),
+             )
+        elif inserted == 0:
+            logger.info("Updated %d existing platform templates.", updated)
         else:
-            logger.info("Seeded %d platform templates.", inserted)
+            logger.info(
+                "Seeded %d platform templates (updated %d existing).",
+                inserted,
+                updated,
+            )
+
+
+
 
 
 async def main() -> None:

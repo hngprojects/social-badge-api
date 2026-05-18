@@ -53,7 +53,8 @@ def test_platform_templates_seed_entries_have_required_keys() -> None:
     expected_keys = {"title", "canvas_data", "thumbnail_url", "category"}
     for entry in PLATFORM_TEMPLATES_SEED:
         assert set(entry.keys()) == expected_keys
-        assert isinstance(entry["title"], str) and entry["title"]
+        assert isinstance(entry["title"], str)
+        assert entry["title"]
         assert isinstance(entry["canvas_data"], dict)
         assert "layout_id" in entry["canvas_data"]
 

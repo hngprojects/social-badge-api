@@ -858,7 +858,7 @@ async def test_list_platform_templates_category_filter(
     assert data["data"]["prev"] is None
     assert (
         data["data"]["next"]
-        == "/api/v1/templates/platform?page=2&category=conferences&limit=1"
+        == "/api/v1/templates/platform?page=2&limit=1&category=conferences"
     )
 
 
