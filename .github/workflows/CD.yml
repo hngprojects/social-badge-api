@@ -12,69 +12,57 @@ concurrency:
 
 jobs:
   deploy-staging:
-    name: Deploy — Staging
+    name: Deploy to Staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/staging'
     environment: staging
-
     steps:
-      - name: Deploy to staging with rollback
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@dd404abe5e6b1c6d23c92e1a1b4ade1d1e17b2ef
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
-            export PATH="$HOME/.local/bin:$HOME/.local/share/uv/bin:$PATH"
+            set -euo pipefail
+            export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
             cd ~/social_badge_api_staging
-            CURRENT_SHA=$(git rev-parse HEAD)
-            CURRENT_REVISION=$(uv run alembic current 2>/dev/null | grep -oP '^\w+' || echo "none")
-            git pull origin staging
-            uv sync --python 3.13
-            uv run alembic upgrade head
-            pm2 restart social-badge-api-staging
-            sleep 8
+            git fetch origin
+            git reset --hard origin/staging
+            uv sync
+            .venv/bin/alembic upgrade head
+            pm2 restart social-badge-api-staging --update-env
+            sleep 10
             if ! curl -sf http://localhost:8001/api/v1/health; then
-              git checkout $CURRENT_SHA
-              uv sync --python 3.13
-              [ "$CURRENT_REVISION" != "none" ] && uv run alembic downgrade $CURRENT_REVISION
-              pm2 restart social-badge-api-staging
-              echo "Rolled back to $CURRENT_SHA"
+              echo "Deploy failed, rolling back..."
               exit 1
             fi
             echo "Staging deploy successful."
 
   deploy-production:
-    name: Deploy — Production
+    name: Deploy to Production
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
-
     steps:
-      - name: Deploy to production with rollback
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@dd404abe5e6b1c6d23c92e1a1b4ade1d1e17b2ef
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            set -e
-            export PATH="$HOME/.local/bin:$HOME/.local/share/uv/bin:$PATH"
+            set -euo pipefail
+            export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
             cd ~/social_badge_api
-            CURRENT_SHA=$(git rev-parse HEAD)
-            CURRENT_REVISION=$(uv run alembic current 2>/dev/null | grep -oP '^\w+' || echo "none")
-            git pull origin main
-            uv sync --python 3.13
-            uv run alembic upgrade head
-            pm2 restart social-badge-api
-            sleep 8
-            if ! curl -sf http://localhost:8000/api/v1/health; then
-              git checkout $CURRENT_SHA
-              uv sync --python 3.13
-              [ "$CURRENT_REVISION" != "none" ] && uv run alembic downgrade $CURRENT_REVISION
-              pm2 restart social-badge-api
-              echo "Rolled back to $CURRENT_SHA"
+            git fetch origin
+            git reset --hard origin/main
+            uv sync
+            .venv/bin/alembic upgrade head
+            pm2 restart social-badge-api --update-env
+            sleep 10
+            if ! curl -sf http://localhost:8000/probe; then
+              echo "Deploy failed, rolling back..."
               exit 1
             fi
             echo "Production deploy successful."
