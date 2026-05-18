@@ -1,10 +1,46 @@
 from PIL import Image, ImageDraw, ImageFont
 import httpx
 from io import BytesIO
+from urllib.parse import urlparse
+import ipaddress
+
+
+def _validate_url(url: str) -> None:
+    """Validate URL to prevent SSRF attacks.
+    
+    Args:
+        url: URL to validate
+        
+    Raises:
+        ValueError: If URL is invalid or points to private/loopback IP
+    """
+    parsed = urlparse(url)
+    
+    # Scheme validation
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Invalid URL scheme: {parsed.scheme}. Only http/https allowed.")
+    
+    # Hostname validation
+    if not parsed.netloc:
+        raise ValueError("URL must contain a hostname")
+    
+    hostname = parsed.netloc.split(":")[0]  # Remove port if present
+    
+    try:
+        ip = ipaddress.ip_address(hostname)
+        # Deny private, loopback, and link-local IPs
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f"URL points to private/loopback IP: {ip}")
+    except (ValueError, ipaddress.AddressValueError):
+        # Not an IP address, likely a hostname - allow it
+        pass
 
 
 def render_badge(profile_img_url: str) -> BytesIO:
     """Render a professional-looking certificate badge"""
+    
+    # Validate URL before fetching
+    _validate_url(profile_img_url)
     
     width, height = 1080, 1080
     

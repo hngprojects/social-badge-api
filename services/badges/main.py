@@ -2,9 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.badges import router as badge_router
-from app.db.base import Base
-from app.db.session import engine
+from services.badges.routes.badges import router as badge_router
 
 app = FastAPI()
 app.add_middleware(

@@ -19,7 +19,7 @@ def generate_badge(payload: BadgeGenerateRequest):
     job = BadgeGenerationJob(
         template_id=payload.template_id,
         participant_name=payload.participant_name,
-        participant_photo_url=payload.photo_url,
+        participant_photo_url=str(payload.photo_url),
         status=JobStatus.QUEUED
     )
 

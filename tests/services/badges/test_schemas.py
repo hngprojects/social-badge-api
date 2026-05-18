@@ -17,7 +17,7 @@ class TestBadgeGenerateRequest:
         request = BadgeGenerateRequest(**payload)
         assert request.template_id == "template_001"
         assert request.participant_name == "John Doe"
-        assert request.photo_url == "https://example.com/photo.jpg"
+        assert str(request.photo_url) == "https://example.com/photo.jpg"
 
     def test_missing_template_id(self):
         """Test validation fails when template_id is missing."""
@@ -71,15 +71,16 @@ class TestBadgeGenerateRequest:
         assert len(request.participant_name) == 500
 
     def test_invalid_url_format(self):
-        """Test with invalid URL format (Pydantic doesn't validate URL by default)."""
+        """Test that invalid URL format is rejected by schema validation."""
         payload = {
             "template_id": "template_001",
             "participant_name": "John Doe",
             "photo_url": "not-a-valid-url"
         }
-        # Current schema doesn't enforce URL validation
-        request = BadgeGenerateRequest(**payload)
-        assert request.photo_url == "not-a-valid-url"
+        # Schema now enforces URL validation
+        with pytest.raises(ValidationError) as exc_info:
+            BadgeGenerateRequest(**payload)
+        assert "photo_url" in str(exc_info.value)
 
     def test_extra_fields_ignored(self):
         """Test that extra fields are ignored by default."""

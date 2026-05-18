@@ -1,33 +1,16 @@
 import pytest
 from io import BytesIO
 from unittest.mock import patch, MagicMock
-
-# Try to import PIL, skip tests if not available
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-    Image = None
-
-# Try to import render_badge, skip tests if import fails
-try:
-    from services.badges.rendering.engine import render_badge
-    RENDER_AVAILABLE = True
-except ImportError:
-    RENDER_AVAILABLE = False
-    render_badge = None
+from PIL import Image
+from services.badges.rendering.engine import render_badge
 
 
-@pytest.mark.skipif(not (PIL_AVAILABLE and RENDER_AVAILABLE), reason="PIL or render_badge not available")
 class TestRenderBadge:
     """Test badge rendering engine."""
 
     @pytest.fixture
     def sample_png_bytes(self):
         """Create a minimal valid PNG image."""
-        if not PIL_AVAILABLE:
-            pytest.skip("PIL not available")
         img = Image.new("RGB", (100, 100), color="blue")
         buffer = BytesIO()
         img.save(buffer, format="PNG")
@@ -83,8 +66,6 @@ class TestRenderBadge:
 
     def test_render_badge_output_is_png_format(self, sample_png_bytes):
         """Test that rendered output is valid PNG format."""
-        if not PIL_AVAILABLE:
-            pytest.skip("PIL not available")
         with patch("services.badges.rendering.engine.httpx.get") as mock_get:
             mock_response = MagicMock()
             mock_response.content = sample_png_bytes
@@ -100,8 +81,6 @@ class TestRenderBadge:
 
     def test_render_badge_creates_square_image(self, sample_png_bytes):
         """Test that rendered badge is 1080x1080 pixels."""
-        if not PIL_AVAILABLE:
-            pytest.skip("PIL not available")
         with patch("services.badges.rendering.engine.httpx.get") as mock_get:
             mock_response = MagicMock()
             mock_response.content = sample_png_bytes
@@ -116,8 +95,6 @@ class TestRenderBadge:
 
     def test_render_badge_with_multiple_image_formats(self, sample_png_bytes):
         """Test rendering with different image format inputs."""
-        if not PIL_AVAILABLE:
-            pytest.skip("PIL not available")
         # Create JPEG image
         jpg_img = Image.new("RGB", (100, 100), color="red")
         jpg_buffer = BytesIO()
@@ -178,8 +155,6 @@ class TestRenderBadge:
 
     def test_render_badge_handles_timeout_error(self):
         """Test handling of request timeout."""
-        if not RENDER_AVAILABLE:
-            pytest.skip("Rendering engine not available")
         with patch("services.badges.rendering.engine.httpx.get") as mock_get:
             mock_get.side_effect = TimeoutError("Request timed out")
             
