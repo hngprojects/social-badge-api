@@ -28,6 +28,12 @@ class EmailNotVerifiedError(Exception):
     pass
 
 
+class EmailAlreadyVerifiedError(Exception):
+    """Raised when a resend-verification is requested for an already-verified email."""
+
+    pass
+
+
 class AccountLockedError(Exception):
     """Raised when a login attempt is made against a locked account (HTTP 423)."""
 
@@ -87,5 +93,11 @@ class TemplateInstanceForbiddenError(Exception):
 
 class CloudinaryUploadError(Exception):
     """Raised when a Cloudinary upload or deletion fails."""
+
+    pass
+
+
+class PublicTemplateNotFoundError(Exception):
+    """Raised when a public slug does not resolve to a published template."""
 
     pass
