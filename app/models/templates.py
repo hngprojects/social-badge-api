@@ -5,13 +5,17 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7
+from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.badges import Badge
     from app.models.users import User
+
+
+def uuid7() -> uuid.UUID:
+    return uuid.UUID(bytes=_uuid7().bytes)
 
 
 class OrganiserTemplate(Base):
@@ -85,7 +89,7 @@ class PlatformTemplate(Base):
         primary_key=True, default=uuid7, index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     canvas_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
