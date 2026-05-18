@@ -1,6 +1,7 @@
 from app.core.exceptions.base import (
     AccountLockedError,
     CloudinaryUploadError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
     EmailDeliveryError,
     EmailNotVerifiedError,
@@ -11,6 +12,7 @@ from app.core.exceptions.base import (
     NotTemplateOwnerError,
     OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
+    PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
     TemplateInstanceForbiddenError,
     TemplateInstanceNotFoundError,
@@ -19,6 +21,7 @@ from app.core.exceptions.handlers import register_exception_handlers
 
 __all__ = [
     "register_exception_handlers",
+    "EmailAlreadyVerifiedError",
     "EmailConflictError",
     "EmailDeliveryError",
     "EmailNotVerifiedError",
@@ -31,6 +34,7 @@ __all__ = [
     "AccountLockedError",
     "NotTemplateOwnerError",
     "PlatformTemplateNotFoundError",
+    "PublicTemplateNotFoundError",
     "TemplateInstanceNotFoundError",
     "TemplateInstanceForbiddenError",
     "CloudinaryUploadError",

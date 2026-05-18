@@ -19,6 +19,7 @@ pytestmark = pytest.mark.skipif(
         settings.CLOUDINARY_CLOUD_NAME
         and settings.CLOUDINARY_API_KEY
         and settings.CLOUDINARY_API_SECRET
+        and settings.CLOUDINARY_API_KEY != "your_api_key_here"
     ),
     reason=(
         "Cloudinary credentials not configured — set CLOUDINARY_CLOUD_NAME, "

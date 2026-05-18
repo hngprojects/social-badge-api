@@ -536,7 +536,7 @@ async def test_request_password_reset_silent_for_unknown_email(
 
 
 @patch("app.services.auth.send_password_reset_email", new_callable=AsyncMock)
-async def test_request_password_reset_swallows_email_failure(
+async def test_request_password_reset_propagates_email_failure(
     mock_email: AsyncMock,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
@@ -548,8 +548,8 @@ async def test_request_password_reset_swallows_email_failure(
         await signup(db_session, fake_redis, signup_payload)
 
     forgot_payload = _make_forgot_payload("failreset@example.com")
-    # Should NOT raise — the service swallows EmailDeliveryError silently
-    await request_password_reset(db_session, fake_redis, forgot_payload)
+    with pytest.raises(EmailDeliveryError):
+        await request_password_reset(db_session, fake_redis, forgot_payload)
 
 
 async def test_build_google_auth_url_stores_state(fake_redis: FakeAsyncRedis) -> None:

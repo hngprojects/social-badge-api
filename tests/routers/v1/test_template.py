@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
 from app.models import OrganiserTemplate, PlatformTemplate, User
@@ -27,10 +28,10 @@ async def test_user(db_session: AsyncSession) -> User:
 
 
 @pytest.fixture
-def auth_headers(test_user: User) -> dict[str, str]:
-    """Return a Bearer token header for the test user."""
+def auth_cookies(test_user: User) -> dict[str, str]:
+    """Return a cookie dictionary for the test user."""
     token = create_access_token(test_user.id)
-    return {"Authorization": f"Bearer {token}"}
+    return {settings.ACCESS_COOKIE: token}
 
 
 @pytest.fixture
@@ -49,13 +50,13 @@ async def platform_template(db_session: AsyncSession) -> PlatformTemplate:
 
 async def test_create_instance_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     platform_template: PlatformTemplate,
     test_user: User,
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/instances",
-        headers=auth_headers,
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
         json={"platform_template_id": str(platform_template.id)},
     )
     assert response.status_code == 201
@@ -72,19 +73,19 @@ async def test_create_instance_unauthenticated(
     client: AsyncClient, platform_template: PlatformTemplate
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/instances",
+        "/api/v1/templates/organizer/instances",
         json={"platform_template_id": str(platform_template.id)},
     )
     assert response.status_code in (401, 403)
 
 
 async def test_create_instance_platform_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        "/api/v1/templates/instances",
-        headers=auth_headers,
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
         json={"platform_template_id": str(fake_id)},
     )
     assert response.status_code == 404
@@ -94,11 +95,11 @@ async def test_create_instance_platform_template_not_found(
 
 
 async def test_create_instance_missing_field(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/instances",
-        headers=auth_headers,
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
         json={},
     )
     assert response.status_code == 422
@@ -125,12 +126,12 @@ async def organiser_template(
 
 async def test_publish_template_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
@@ -146,18 +147,18 @@ async def test_publish_template_unauthenticated(
     client: AsyncClient, organiser_template: OrganiserTemplate
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
     )
     assert response.status_code in (401, 403)
 
 
 async def test_publish_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        f"/api/v1/templates/{fake_id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{fake_id}/publish",
+        cookies=auth_cookies,
     )
     assert response.status_code == 404
     assert response.json()["message"] == "Template not found."
@@ -203,8 +204,8 @@ async def test_publish_template_not_owner(
 
     other_token = create_access_token(other.id)
     response = await client.post(
-        f"/api/v1/templates/{template.id}/publish",
-        headers={"Authorization": f"Bearer {other_token}"},
+        f"/api/v1/templates/organizer/{template.id}/publish",
+        cookies={settings.ACCESS_COOKIE: other_token},
     )
     assert response.status_code == 403
     assert response.json()["message"] == "You do not own this template."
@@ -212,16 +213,16 @@ async def test_publish_template_not_owner(
 
 async def test_publish_template_already_published(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     response = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     assert response.status_code == 409
     assert response.json()["message"] == "Template is already published."
@@ -229,18 +230,18 @@ async def test_publish_template_already_published(
 
 async def test_unpublish_template_success(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     publish_response = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     original_slug = publish_response.json()["data"]["share_slug"]
 
     response = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/unpublish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/unpublish",
+        cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
@@ -253,34 +254,34 @@ async def test_unpublish_template_success(
 
 async def test_republish_preserves_slug(
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     organiser_template: OrganiserTemplate,
 ) -> None:
     first = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     original_slug = first.json()["data"]["share_slug"]
 
     await client.post(
-        f"/api/v1/templates/{organiser_template.id}/unpublish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/unpublish",
+        cookies=auth_cookies,
     )
     second = await client.post(
-        f"/api/v1/templates/{organiser_template.id}/publish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{organiser_template.id}/publish",
+        cookies=auth_cookies,
     )
     assert second.status_code == 200
     assert second.json()["data"]["share_slug"] == original_slug
 
 
 async def test_unpublish_template_not_found(
-    client: AsyncClient, auth_headers: dict[str, str]
+    client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        f"/api/v1/templates/{fake_id}/unpublish",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/{fake_id}/unpublish",
+        cookies=auth_cookies,
     )
     assert response.status_code == 404
 
@@ -351,23 +352,23 @@ async def other_user(db_session: AsyncSession) -> User:
 
 
 @pytest.fixture
-def other_auth_headers(other_user: User) -> dict[str, str]:
+def other_auth_cookies(other_user: User) -> dict[str, str]:
     token = create_access_token(other_user.id)
-    return {"Authorization": f"Bearer {token}"}
+    return {settings.ACCESS_COOKIE: token}
 
 
 @patch("app.services.template.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_success(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -385,15 +386,15 @@ async def test_upload_logo_replaces_existing(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance_with_logo: OrganiserTemplate,
 ) -> None:
     """Uploading a new logo should delete the old Cloudinary asset first."""
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance_with_logo.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance_with_logo.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.jpg", _FAKE_JPEG, "image/jpeg")},
     )
 
@@ -406,12 +407,12 @@ async def test_upload_logo_replaces_existing(
 async def test_upload_logo_unsupported_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.gif", b"fake-gif-bytes", "image/gif")},
     )
 
@@ -425,15 +426,15 @@ async def test_upload_logo_unsupported_type(
 async def test_upload_logo_too_large(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     # PNG magic + enough padding to exceed 2 MB.
     oversized = _FAKE_PNG + b"x" * (2 * 1024 * 1024)
 
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.png", oversized, "image/png")},
     )
 
@@ -448,7 +449,7 @@ async def test_upload_logo_unauthenticated(
     template_instance: OrganiserTemplate,
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -459,11 +460,11 @@ async def test_upload_logo_unauthenticated(
 async def test_upload_logo_instance_not_found(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/instances/{uuid.uuid4()}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{uuid.uuid4()}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -476,13 +477,13 @@ async def test_upload_logo_instance_not_found(
 
 async def test_upload_logo_forbidden(
     client: AsyncClient,
-    other_auth_headers: dict[str, str],
+    other_auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     """A user who does not own the instance should get 403."""
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=other_auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        cookies=other_auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -495,15 +496,15 @@ async def test_upload_logo_forbidden(
 async def test_upload_logo_rejects_spoofed_mime_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     """File declared as image/png but containing GIF magic bytes should be rejected."""
     gif_bytes = b"GIF89a" + b"\x00" * 20
 
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("evil.png", gif_bytes, "image/png")},
     )
 
@@ -515,7 +516,7 @@ async def test_upload_logo_rejects_spoofed_mime_type(
 async def test_upload_logo_soft_deleted_instance_returns_404(
     mock_upload: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     db_session: AsyncSession,
     test_user: User,
     platform_template: PlatformTemplate,
@@ -535,8 +536,8 @@ async def test_upload_logo_soft_deleted_instance_returns_404(
     await db_session.refresh(deleted_instance)
 
     response = await client.put(
-        f"/api/v1/templates/instances/{deleted_instance.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{deleted_instance.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -550,7 +551,7 @@ async def test_upload_logo_uploads_before_deleting_old(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance_with_logo: OrganiserTemplate,
 ) -> None:
     """New asset must be uploaded and persisted before the old one is deleted."""
@@ -567,8 +568,8 @@ async def test_upload_logo_uploads_before_deleting_old(
     mock_delete.side_effect = fake_delete
 
     response = await client.put(
-        f"/api/v1/templates/instances/{template_instance_with_logo.id}/logo",
-        headers=auth_headers,
+        f"/api/v1/templates/organizer/instances/{template_instance_with_logo.id}/logo",
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
@@ -584,24 +585,312 @@ async def test_upload_logo_rate_limit(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
     client: AsyncClient,
-    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
     template_instance: OrganiserTemplate,
 ) -> None:
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
-    url = f"/api/v1/templates/instances/{template_instance.id}/logo"
+    url = f"/api/v1/templates/organizer/instances/{template_instance.id}/logo"
     for _ in range(10):
         await client.put(
             url,
-            headers=auth_headers,
+            cookies=auth_cookies,
             files={"file": ("logo.png", _FAKE_PNG, "image/png")},
         )
 
     response = await client.put(
         url,
-        headers=auth_headers,
+        cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
     assert response.status_code == 429
     data = response.json()
     assert data["status"] == "error"
+
+
+@pytest.fixture
+async def published_template(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Seed a published organiser template with a slug, logo, and hashtags."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="HNG Tech Fest 2026",
+        canvas_data={"layout": "bold-v1", "accent": "#FF5733"},
+        logo_url="https://res.cloudinary.com/demo/image/upload/template-logos/fest.png",
+        default_caption="I'm attending HNG Tech Fest 2026! 🚀",
+        destination_link="https://techfest.example.com",
+        is_published=True,
+        share_slug="abcdef123456",
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#HNGTechFest", "#2026"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_get_participant_page_success(
+    client: AsyncClient,
+    published_template: OrganiserTemplate,
+) -> None:
+    response = await client.get(
+        f"/api/v1/templates/organizer/public/{published_template.share_slug}",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template data retrieved successfully."
+    assert data["data"]["title"] == "HNG Tech Fest 2026"
+    assert data["data"]["canvas_data"] == {"layout": "bold-v1", "accent": "#FF5733"}
+    assert data["data"]["logo_url"] == (
+        "https://res.cloudinary.com/demo/image/upload/template-logos/fest.png"
+    )
+    assert data["data"]["default_caption"] == "I'm attending HNG Tech Fest 2026! 🚀"
+    assert data["data"]["destination_link"] == "https://techfest.example.com"
+    assert sorted(data["data"]["hashtags"]) == ["#2026", "#HNGTechFest"]
+
+
+async def test_get_participant_page_no_hashtags(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Published template with no hashtags should return an empty list."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="No Tags Event",
+        canvas_data={"layout": "minimal-v1"},
+        is_published=True,
+        share_slug="notags000001",
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    response = await client.get("/api/v1/templates/organizer/public/notags000001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["hashtags"] == []
+
+
+async def test_get_participant_page_unpublished(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Slug exists but template is in draft state — should return 404."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,
+        share_slug="draft0000001",
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/organizer/public/draft0000001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_nonexistent_slug(
+    client: AsyncClient,
+) -> None:
+    """A completely random slug should return 404."""
+    response = await client.get("/api/v1/templates/organizer/public/doesnotexist1")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_soft_deleted(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Published but soft-deleted template should return 404."""
+    from datetime import UTC, datetime
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Deleted Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=True,
+        share_slug="deleted00001",
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/organizer/public/deleted00001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_get_participant_page_no_auth_required(
+    client: AsyncClient,
+    published_template: OrganiserTemplate,
+) -> None:
+    """No Bearer token sent — should still return 200, not 401."""
+    response = await client.get(
+        f"/api/v1/templates/organizer/public/{published_template.share_slug}",
+    )
+    assert response.status_code == 200
+
+
+async def test_get_participant_page_was_published_then_unpublished(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Slug that was once published but has since been unpublished returns 404."""
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Past Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,  # was published, now unpublished
+        share_slug="waspub000001",  # slug preserved from when it was published
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/templates/organizer/public/waspub000001")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+@pytest.fixture
+async def seed_multiple_platform_templates(
+    db_session: AsyncSession,
+) -> list[PlatformTemplate]:
+    """Seed multiple platform templates with different categories for tests."""
+    templates = [
+        PlatformTemplate(
+            title="Alpha", category="festivals", canvas_data={"layout_id": "v1"}
+        ),
+        PlatformTemplate(
+            title="Beta", category="festivals", canvas_data={"layout_id": "v1"}
+        ),
+        PlatformTemplate(
+            title="Gamma", category="conferences", canvas_data={"layout_id": "v1"}
+        ),
+        PlatformTemplate(
+            title="Delta", category="conferences", canvas_data={"layout_id": "v1"}
+        ),
+        PlatformTemplate(
+            title="Epsilon", category="meetups", canvas_data={"layout_id": "v1"}
+        ),
+    ]
+    for t in templates:
+        db_session.add(t)
+    await db_session.commit()
+    for t in templates:
+        await db_session.refresh(t)
+    return templates
+
+
+async def test_list_platform_templates_default_pagination(
+    client: AsyncClient,
+    seed_multiple_platform_templates: list[PlatformTemplate],
+) -> None:
+    response = await client.get("/api/v1/templates/platform")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Platform templates retrieved successfully."
+    assert data["data"]["total"] == 5
+    assert data["data"]["page"] == 1
+    assert data["data"]["limit"] == 10
+    assert len(data["data"]["templates"]) == 5
+    assert data["data"]["prev"] is None
+    assert data["data"]["next"] is None
+
+
+async def test_list_platform_templates_custom_limit_page(
+    client: AsyncClient,
+    seed_multiple_platform_templates: list[PlatformTemplate],
+) -> None:
+    response = await client.get("/api/v1/templates/platform?page=2&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["total"] == 5
+    assert data["data"]["page"] == 2
+    assert data["data"]["limit"] == 2
+    assert len(data["data"]["templates"]) == 2
+    titles = [t["title"] for t in data["data"]["templates"]]
+    assert titles == ["Alpha", "Beta"]
+    assert data["data"]["prev"] == "/api/v1/templates/platform?page=1&limit=2"
+    assert data["data"]["next"] == "/api/v1/templates/platform?page=3&limit=2"
+
+
+async def test_list_platform_templates_category_filter(
+    client: AsyncClient,
+    seed_multiple_platform_templates: list[PlatformTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/platform?category=conferences&page=1&limit=1"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["total"] == 2
+    assert data["data"]["page"] == 1
+    assert data["data"]["limit"] == 1
+    assert len(data["data"]["templates"]) == 1
+    assert data["data"]["templates"][0]["title"] == "Delta"
+    assert data["data"]["prev"] is None
+    assert (
+        data["data"]["next"]
+        == "/api/v1/templates/platform?page=2&limit=1&category=conferences"
+    )
+
+
+async def test_list_platform_templates_invalid_category(
+    client: AsyncClient,
+    seed_multiple_platform_templates: list[PlatformTemplate],
+) -> None:
+    response = await client.get("/api/v1/templates/platform?category=invalid_cat")
+    assert response.status_code == 400
+    data = response.json()
+    assert data["status"] == "error"
+    assert "Unknown category" in data["message"]
+
+
+async def test_get_platform_template_success(
+    client: AsyncClient,
+    platform_template: PlatformTemplate,
+) -> None:
+    response = await client.get(f"/api/v1/templates/platform/{platform_template.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Platform template retrieved successfully."
+    assert data["data"]["id"] == str(platform_template.id)
+    assert data["data"]["title"] == platform_template.title
+
+
+async def test_get_platform_template_not_found(
+    client: AsyncClient,
+) -> None:
+    response = await client.get(f"/api/v1/templates/platform/{uuid.uuid4()}")
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Platform template not found."

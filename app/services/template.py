@@ -2,15 +2,17 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import (
     NotTemplateOwnerError,
     OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
+    PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
     TemplateInstanceForbiddenError,
     TemplateInstanceNotFoundError,
@@ -20,6 +22,21 @@ from app.models import OrganiserTemplate, PlatformTemplate
 from app.services.cloudinary import delete_logo, upload_logo
 
 logger = logging.getLogger(__name__)
+
+# Valid gallery categories — used for validation so we can return a clean 400
+# rather than an empty list when the client sends a typo.
+VALID_CATEGORIES = frozenset(
+    {
+        "festivals",
+        "hackathons",
+        "conferences",
+        "community",
+        "bootcamp",
+        "meetups",
+        "speakers",
+        "trending",
+    }
+)
 
 
 async def create_template_instance(
@@ -180,3 +197,97 @@ async def upload_template_logo(
         public_id,
     )
     return logo_url
+
+
+async def get_public_template_by_slug(
+    session: AsyncSession,
+    slug: str,
+) -> OrganiserTemplate:
+    result = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.hashtags))
+        .where(
+            OrganiserTemplate.share_slug == slug,
+            OrganiserTemplate.is_published.is_(True),
+            OrganiserTemplate.deleted_at.is_(None),
+        )
+    )
+    template = result.scalars().first()
+    if template is None:
+        raise PublicTemplateNotFoundError
+
+    logger.info("Public lookup for slug %s resolved to template %s", slug, template.id)
+    return template
+
+
+async def list_platform_templates(
+    session: AsyncSession,
+    category: str | None = None,
+    page: int = 1,
+    limit: int = 10,
+) -> tuple[list[PlatformTemplate], int]:
+    if category is not None:
+        normalised = category.strip().lower()
+        if normalised not in VALID_CATEGORIES:
+            raise ValueError(
+                f"Unknown category '{category}'. "
+                f"Valid options: {', '.join(sorted(VALID_CATEGORIES))}"
+            )
+        count_stmt = select(func.count(PlatformTemplate.id)).where(
+            PlatformTemplate.is_active.is_(True),
+            PlatformTemplate.category == normalised,
+        )
+        stmt = (
+            select(PlatformTemplate)
+            .where(
+                PlatformTemplate.is_active.is_(True),
+                PlatformTemplate.category == normalised,
+            )
+            .order_by(PlatformTemplate.title)
+        )
+    else:
+        count_stmt = select(func.count(PlatformTemplate.id)).where(
+            PlatformTemplate.is_active.is_(True)
+        )
+        stmt = (
+            select(PlatformTemplate)
+            .where(PlatformTemplate.is_active.is_(True))
+            .order_by(PlatformTemplate.category.nulls_last(), PlatformTemplate.title)
+        )
+
+    count_result = await session.execute(count_stmt)
+    total = count_result.scalar_one()
+
+    offset = (page - 1) * limit
+    stmt = stmt.offset(offset).limit(limit)
+
+    result = await session.execute(stmt)
+    templates = list(result.scalars().all())
+
+    logger.debug(
+        "list_platform_templates: category=%s page=%d limit=%d "
+        "returned %d of %d total results",
+        category,
+        page,
+        limit,
+        len(templates),
+        total,
+    )
+    return templates, total
+
+
+async def get_platform_template(
+    session: AsyncSession,
+    template_id: UUID,
+) -> PlatformTemplate:
+    result = await session.execute(
+        select(PlatformTemplate).where(
+            PlatformTemplate.id == template_id,
+            PlatformTemplate.is_active.is_(True),
+        )
+    )
+    template = result.scalars().first()
+    if template is None:
+        raise PlatformTemplateNotFoundError
+
+    return template

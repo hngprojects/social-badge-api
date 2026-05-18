@@ -2,7 +2,7 @@ import asyncio
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyCookie
 from jose import JWTError, jwt
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,15 +16,19 @@ from app.models.users import User
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 RedisClient = Annotated[Redis, Depends(get_redis_client)]
 
-security = HTTPBearer()
+security = APIKeyCookie(name=settings.ACCESS_COOKIE, auto_error=False)
 
 
 async def get_current_user(
     session: DBSession,
     redis: RedisClient,
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    token: Annotated[str | None, Depends(security)],
 ) -> User:
-    token = credentials.credentials
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     try:
         payload = await asyncio.to_thread(
             jwt.decode,

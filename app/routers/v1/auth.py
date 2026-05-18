@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -8,7 +9,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
+    EmailDeliveryError,
     EmailNotVerifiedError,
     GoogleOAuthError,
     InvalidCredentialsError,
@@ -21,14 +24,13 @@ from app.core.token import (
     create_refresh_token,
     hash_token,
 )
-from app.dependencies import DBSession, RedisClient
+from app.dependencies import CurrentUser, DBSession, RedisClient
 from app.models.auth import RefreshToken
 from app.models.users import User
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
-    RefreshResponse,
     ResendVerificationRequest,
     ResetPasswordRequest,
     SignupRequest,
@@ -50,7 +52,31 @@ from app.services.auth import (
     signup,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+@router.get(
+    "/me",
+    response_model=SuccessResponse[UserResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get current authenticated organiser profile",
+    responses={
+        200: {"description": "Profile retrieved successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/minute")
+async def get_current_user_profile(
+    request: Request,
+    current_user: CurrentUser,
+) -> SuccessResponse[UserResponse]:
+    return SuccessResponse(
+        message="Profile retrieved successfully",
+        data=UserResponse.model_validate(current_user),
+    )
 
 
 @router.post(
@@ -135,12 +161,12 @@ async def register(
     summary="Resend account verification email",
     description=(
         "Resends the account verification email if the user exists and has not "
-        "yet verified their email address. If the email is already verified or "
-        "not registered, the request will still succeed silently."
+        "yet verified their email address. Always returns a uniform 200 to "
+        "prevent account enumeration."
     ),
     responses={
         200: {
-            "description": "Verification email resent (or silently ignored)",
+            "description": "Request accepted",
             "content": {
                 "application/json": {
                     "example": {
@@ -171,7 +197,20 @@ async def resend_verification(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
-    await resend_verification_email(session, redis, payload)
+    try:
+        await resend_verification_email(session, redis, payload)
+    except EmailAlreadyVerifiedError as exc:
+        logger.info(
+            "Resend-verification skipped: %s is already verified",
+            hash_token(payload.email),
+            exc_info=exc,
+        )
+    except EmailDeliveryError as exc:
+        logger.warning(
+            "Resend-verification email delivery failed for %s",
+            hash_token(payload.email),
+            exc_info=exc,
+        )
 
     return SuccessResponse(
         message=(
@@ -236,8 +275,7 @@ async def reset_organizer_password(
         "Validates email and password against users table. "
         "Returns generic 401 'Invalid credentials' for wrong email OR wrong password. "
         "Returns 403 if email not verified. "
-        "Issues 15 min JWT access token on success. "
-        "Sets 7 day refresh token as httpOnly cookie. "
+        "Sets access token and 7 day refresh token as httpOnly cookies. "
         "Prevents no more than 5 failed login attempts in 15 mins."
     ),
     responses={
@@ -249,7 +287,6 @@ async def reset_organizer_password(
                         "status": "success",
                         "message": "Login successful",
                         "data": {
-                            "access_token": "eyJhbGciOiJIIsInR5cCI6IkpXVCJ9.ey...",
                             "user": {
                                 "id": "123e4567-e89b-12d3-a456-426614174000",
                                 "name": "Jane Doe",
@@ -299,12 +336,12 @@ async def login(
             detail=str(locked_exc) or "Too many failed login attempts.",
         ) from locked_exc
 
+    set_access_cookie(response, access_token)
     set_refresh_cookie(response, refresh_token)
 
     return SuccessResponse(
         message="Login successful",
         data=LoginResponse(
-            access_token=access_token,
             user=UserResponse.model_validate(user),
         ),
     )
@@ -312,9 +349,14 @@ async def login(
 
 @router.post(
     "/refresh",
-    response_model=SuccessResponse[RefreshResponse],
+    response_model=SuccessResponse[None],
     status_code=status.HTTP_200_OK,
     summary="Refresh access token",
+    description=(
+        "Issues a new access token and rotates the refresh token. "
+        "Requires a valid refresh token cookie. "
+        "The new tokens are delivered as HttpOnly cookies."
+    ),
     responses={
         200: {
             "description": "Token refreshed successfully",
@@ -323,9 +365,7 @@ async def login(
                     "example": {
                         "status": "success",
                         "message": "Token refreshed",
-                        "data": {
-                            "access_token": "eyJhbGciOiJIIsInR5cCI6IkpXVCJ9.ey..."
-                        },
+                        "data": None,
                     }
                 }
             },
@@ -343,7 +383,7 @@ async def refresh(
     response: Response,
     session: DBSession,
     redis: RedisClient,
-) -> SuccessResponse[RefreshResponse]:
+) -> SuccessResponse[None]:
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     if not refresh_token:
         raise HTTPException(
@@ -351,10 +391,7 @@ async def refresh(
             detail="Refresh token missing",
         )
 
-    auth_header = request.headers.get("authorization")
-    access_token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        access_token = auth_header.split(" ", 1)[1]
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
 
     try:
         new_access, new_refresh = await refresh_session(
@@ -366,11 +403,12 @@ async def refresh(
             detail="Invalid or expired refresh token",
         ) from exc
 
+    set_access_cookie(response, new_access)
     set_refresh_cookie(response, new_refresh)
 
     return SuccessResponse(
         message="Token refreshed",
-        data=RefreshResponse(access_token=new_access),
+        data=None,
     )
 
 
@@ -378,6 +416,10 @@ async def refresh(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Logout user",
+    description=(
+        "Logs out the current user by invalidating their tokens. "
+        "Clears the access and refresh HttpOnly cookies from the browser."
+    ),
     responses={
         204: {"description": "Logout successful (no content)"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
@@ -391,11 +433,7 @@ async def logout(
     redis: RedisClient,
 ) -> None:
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
-
-    auth_header = request.headers.get("authorization")
-    access_token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        access_token = auth_header.split(" ", 1)[1]
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
 
     await logout_session(session, redis, refresh_token, access_token)
 
@@ -449,7 +487,14 @@ async def forgot_password(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
-    await request_password_reset(session, redis, payload)
+    try:
+        await request_password_reset(session, redis, payload)
+    except EmailDeliveryError as exc:
+        logger.warning(
+            "Password reset email delivery failed for %s",
+            hash_token(payload.email),
+            exc_info=exc,
+        )
 
     return SuccessResponse(
         message=(

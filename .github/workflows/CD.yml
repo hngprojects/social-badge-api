@@ -1,0 +1,88 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    steps:
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
+            cd ~/social_badge_api_staging
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            git fetch origin
+            git reset --hard origin/staging
+            uv sync
+            .venv/bin/alembic upgrade head
+            pm2 restart social-badge-api-staging --update-env
+            sleep 10
+            if ! curl -sf http://localhost:8001/api/v1/health; then
+              echo "Deploy failed, rolling back to $PREVIOUS_COMMIT..."
+              git reset --hard $PREVIOUS_COMMIT
+              uv sync
+              pm2 restart social-badge-api-staging --update-env
+              sleep 10
+              if ! curl -sf http://localhost:8001/api/v1/health; then
+                echo "Rollback also failed. Manual intervention required."
+                exit 2
+              fi
+              echo "Rollback successful."
+              exit 1
+            fi
+            echo "Staging deploy successful."
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
+            cd ~/social_badge_api
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            git fetch origin
+            git reset --hard origin/main
+            uv sync
+            .venv/bin/alembic upgrade head
+            pm2 restart social-badge-api --update-env
+            sleep 10
+            if ! curl -sf http://localhost:8000/probe; then
+              echo "Deploy failed, rolling back to $PREVIOUS_COMMIT..."
+              git reset --hard $PREVIOUS_COMMIT
+              uv sync
+              pm2 restart social-badge-api --update-env
+              sleep 10
+              if ! curl -sf http://localhost:8000/probe; then
+                echo "Rollback also failed. Manual intervention required."
+                exit 2
+              fi
+              echo "Rollback successful."
+              exit 1
+            fi
+            echo "Production deploy successful."
