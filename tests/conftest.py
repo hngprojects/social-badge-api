@@ -26,12 +26,13 @@ from app.models.base import Base
 
 
 def create_db_engine() -> AsyncEngine:
-    db_url = str(settings.DATABASE_URL)
+    from sqlalchemy.engine import make_url
     
     # Force the use of the 'test' database to avoid dropping main database tables.
-    # Use string manipulation to avoid SQLAlchemy URL serialization issues
-    if "/test" not in db_url:
-        db_url = db_url.rsplit("/", 1)[0] + "/test"
+    url = make_url(str(settings.DATABASE_URL))
+    if url.database != "test":
+        url = url.set(database="test")
+    db_url = url.render_as_string(hide_password=False)
 
     test_engine = create_async_engine(
         db_url,
