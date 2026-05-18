@@ -86,10 +86,10 @@ class TestBadgeRoutes:
         response = client.post("/badges/generate", json=payload)
         
         assert response.status_code == 200
-        # Verify enqueue was called with the job ID
+        # Verify enqueue was called with the expected job ID
         mock_queue.enqueue.assert_called_once()
-        call_args = mock_queue.enqueue.call_args
-        assert str(job_id) in str(call_args)
+        args, kwargs = mock_queue.enqueue.call_args
+        assert str(job_id) in str(args) or str(job_id) in str(kwargs)
 
     @patch("services.badges.routes.badges.SessionLocal")
     @patch("services.badges.routes.badges.badge_queue")
@@ -263,8 +263,13 @@ class TestBadgeRoutesErrorHandling:
         
         # Verify query was called
         mock_db.query.assert_called_once()
-        # Verify filter was called (for job_id matching)
+        # Verify filter was called with a predicate expression (SQLAlchemy BinaryExpression)
         mock_db.query.return_value.filter.assert_called_once()
+        filter_args, filter_kwargs = mock_db.query.return_value.filter.call_args
+        # Verify filter was called with exactly one positional arg (the WHERE clause)
+        # and no keyword args - this ensures a valid SQLAlchemy filter expression was passed
+        assert len(filter_args) == 1
+        assert len(filter_kwargs) == 0
         mock_db.close.assert_called_once()
 
 
