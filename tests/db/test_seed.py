@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import seed
 from app.db.seed import (
     PLATFORM_TEMPLATES_SEED,
     main,
@@ -37,12 +36,12 @@ def patched_session_local(db_session: AsyncSession) -> Iterator[None]:
     def factory() -> _SessionContext:
         return _SessionContext(db_session)
 
-    with patch.object(seed, "AsyncSessionLocal", factory):
+    with patch("app.db.seed.seeder.AsyncSessionLocal", factory):
         yield
 
 
-def test_platform_templates_seed_has_four_entries() -> None:
-    assert len(PLATFORM_TEMPLATES_SEED) == 4
+def test_platform_templates_seed_has_seventeen_entries() -> None:
+    assert len(PLATFORM_TEMPLATES_SEED) == 17
 
 
 def test_platform_templates_seed_titles_are_unique() -> None:
@@ -51,12 +50,13 @@ def test_platform_templates_seed_titles_are_unique() -> None:
 
 
 def test_platform_templates_seed_entries_have_required_keys() -> None:
-    expected_keys = {"title", "canvas_data", "thumbnail_url"}
+    expected_keys = {"title", "canvas_data", "thumbnail_url", "category"}
     for entry in PLATFORM_TEMPLATES_SEED:
         assert set(entry.keys()) == expected_keys
-        assert isinstance(entry["title"], str) and entry["title"]
+        assert isinstance(entry["title"], str)
+        assert entry["title"]
         assert isinstance(entry["canvas_data"], dict)
-        assert "layout" in entry["canvas_data"]
+        assert "layout_id" in entry["canvas_data"]
 
 
 @pytest.mark.usefixtures("patched_session_local")
@@ -121,7 +121,7 @@ async def test_seed_platform_templates_inserts_only_missing_titles(
     result = await db_session.execute(select(PlatformTemplate))
     templates = {t.title: t for t in result.scalars().all()}
 
-    assert len(templates) == len(PLATFORM_TEMPLATES_SEED)
+    assert len(templates) == len(PLATFORM_TEMPLATES_SEED) + 1
     assert templates["Creative"].canvas_data == pre_existing_canvas
     for entry in PLATFORM_TEMPLATES_SEED:
         title = str(entry["title"])
@@ -161,8 +161,8 @@ async def test_seed_platform_templates_logs_count_on_insert(
 
 
 async def test_main_invokes_seed_platform_templates() -> None:
-    with patch.object(
-        seed, "seed_platform_templates", new_callable=AsyncMock
+    with patch(
+        "app.db.seed.seeder.seed_platform_templates", new_callable=AsyncMock
     ) as mock_seed:
         await main()
 
