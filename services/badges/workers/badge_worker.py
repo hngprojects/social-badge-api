@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import logging
+import uuid
 
 from services.badges.db.session import SessionLocal
 from services.badges.models.badge_model import BadgeGenerationJob
@@ -15,11 +16,18 @@ def process_badge_generation(job_id: str):
     """Process badge generation job: render image, save it, and update job status."""
 
     db = SessionLocal()
+    job = None
 
     try:
-        # Query using string job_id (stored as string in SQLite)
+        # Convert string job_id to UUID for database query
+        try:
+            lookup_id = uuid.UUID(job_id) if isinstance(job_id, str) else job_id
+        except (ValueError, AttributeError):
+            lookup_id = job_id
+
+        # Query using UUID job_id
         job = db.query(BadgeGenerationJob).filter(
-            BadgeGenerationJob.job_id == job_id
+            BadgeGenerationJob.job_id == lookup_id
         ).first()
 
         if not job:
@@ -51,9 +59,10 @@ def process_badge_generation(job_id: str):
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {str(e)}", exc_info=True)
-        job.status = JobStatus.FAILED
-        job.error_message = str(e)
-        db.commit()
+        if job:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            db.commit()
 
     finally:
         db.close()
