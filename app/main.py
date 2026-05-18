@@ -8,6 +8,7 @@ from fastapi.requests import Request
 
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.rate_limit import limiter
 from app.db.redis import redis_pool
 from app.routers.v1 import api_router
 
@@ -45,5 +46,6 @@ register_exception_handlers(app)
 
 
 @app.get("/")
+@limiter.limit("15/minute")
 def root(request: Request) -> dict[str, str]:
     return {"message": f"{settings.PROJECT_NAME} is running"}
