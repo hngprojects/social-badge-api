@@ -1,5 +1,6 @@
 import os
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from fakeredis import FakeAsyncRedis
@@ -102,8 +103,17 @@ async def client(
     app.dependency_overrides[get_redis_client] = override_get_redis
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    async with AsyncClient(transport=transport, base_url="http://test") as async_client:
+        original_request = async_client.request
+
+        async def custom_request(*args: Any, **kwargs: Any) -> Any:
+            cookies = kwargs.pop("cookies", None)
+            if cookies:
+                async_client.cookies.update(cookies)
+            return await original_request(*args, **kwargs)
+
+        async_client.request = custom_request  # type: ignore[method-assign]
+        yield async_client
 
     app.dependency_overrides.pop(get_session, None)
     app.dependency_overrides.pop(get_redis_client, None)
