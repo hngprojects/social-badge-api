@@ -18,7 +18,7 @@ jobs:
     environment: staging
     steps:
       - name: Deploy to staging server
-        uses: appleboy/ssh-action@dd404abe5e6b1c6d23c92e1a1b4ade1d1e17b2ef
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -27,6 +27,7 @@ jobs:
             set -euo pipefail
             export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
             cd ~/social_badge_api_staging
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
             git fetch origin
             git reset --hard origin/staging
             uv sync
@@ -34,7 +35,16 @@ jobs:
             pm2 restart social-badge-api-staging --update-env
             sleep 10
             if ! curl -sf http://localhost:8001/api/v1/health; then
-              echo "Deploy failed, rolling back..."
+              echo "Deploy failed, rolling back to $PREVIOUS_COMMIT..."
+              git reset --hard $PREVIOUS_COMMIT
+              uv sync
+              pm2 restart social-badge-api-staging --update-env
+              sleep 10
+              if ! curl -sf http://localhost:8001/api/v1/health; then
+                echo "Rollback also failed. Manual intervention required."
+                exit 2
+              fi
+              echo "Rollback successful."
               exit 1
             fi
             echo "Staging deploy successful."
@@ -46,7 +56,7 @@ jobs:
     environment: production
     steps:
       - name: Deploy to production server
-        uses: appleboy/ssh-action@dd404abe5e6b1c6d23c92e1a1b4ade1d1e17b2ef
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -55,6 +65,7 @@ jobs:
             set -euo pipefail
             export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$HOME/.local/share/uv/bin:$PATH"
             cd ~/social_badge_api
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
             git fetch origin
             git reset --hard origin/main
             uv sync
@@ -62,7 +73,16 @@ jobs:
             pm2 restart social-badge-api --update-env
             sleep 10
             if ! curl -sf http://localhost:8000/probe; then
-              echo "Deploy failed, rolling back..."
+              echo "Deploy failed, rolling back to $PREVIOUS_COMMIT..."
+              git reset --hard $PREVIOUS_COMMIT
+              uv sync
+              pm2 restart social-badge-api --update-env
+              sleep 10
+              if ! curl -sf http://localhost:8000/probe; then
+                echo "Rollback also failed. Manual intervention required."
+                exit 2
+              fi
+              echo "Rollback successful."
               exit 1
             fi
             echo "Production deploy successful."
