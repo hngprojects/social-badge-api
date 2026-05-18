@@ -28,6 +28,12 @@ class EmailNotVerifiedError(Exception):
     pass
 
 
+class EmailAlreadyVerifiedError(Exception):
+    """Raised when a resend-verification is requested for an already-verified email."""
+
+    pass
+
+
 class AccountLockedError(Exception):
     """Raised when a login attempt is made against a locked account (HTTP 423)."""
 

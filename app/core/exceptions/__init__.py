@@ -1,6 +1,7 @@
 from app.core.exceptions.base import (
     AccountLockedError,
     CloudinaryUploadError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
     EmailDeliveryError,
     EmailNotVerifiedError,
@@ -20,6 +21,7 @@ from app.core.exceptions.handlers import register_exception_handlers
 
 __all__ = [
     "register_exception_handlers",
+    "EmailAlreadyVerifiedError",
     "EmailConflictError",
     "EmailDeliveryError",
     "EmailNotVerifiedError",

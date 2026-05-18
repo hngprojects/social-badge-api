@@ -484,7 +484,6 @@ async def test_login_success(
     data = response.json()
     assert data["status"] == "success"
     assert data["message"] == "Login successful"
-    assert "access_token" in data["data"]
     assert data["data"]["user"]["email"] == verified_login_user["email"]
 
 
@@ -494,6 +493,7 @@ async def test_login_success_sets_httponly_cookie(
     response = await client.post("/api/v1/auth/login", json=verified_login_user)
     assert response.status_code == 200
     assert settings.REFRESH_COOKIE in response.cookies
+    assert settings.ACCESS_COOKIE in response.cookies
     assert "HttpOnly" in response.headers["set-cookie"]
 
 
@@ -740,13 +740,15 @@ async def test_refresh_token_endpoint_success(
     data = response.json()
     assert data["status"] == "success"
     assert data["message"] == "Token refreshed"
-    assert data["data"]["access_token"] == "new_access_token"  # noqa: S105
+    assert data["data"] is None
 
     mock_refresh.assert_awaited_once_with(ANY, ANY, "old_refresh_token", None)
 
-    # Verify cookie was set
+    # Verify cookies were set
     assert settings.REFRESH_COOKIE in response.cookies
     assert response.cookies[settings.REFRESH_COOKIE] == "new_raw_refresh_token"
+    assert settings.ACCESS_COOKIE in response.cookies
+    assert response.cookies[settings.ACCESS_COOKIE] == "new_access_token"
 
 
 async def test_refresh_token_endpoint_missing_cookie(client: AsyncClient) -> None:
@@ -781,10 +783,9 @@ async def test_logout_endpoint_success(
     mock_logout: AsyncMock, client: AsyncClient
 ) -> None:
     client.cookies.set(settings.REFRESH_COOKIE, "some_refresh_token")
+    client.cookies.set(settings.ACCESS_COOKIE, "some_access_token")
 
-    response = await client.post(
-        "/api/v1/auth/logout", headers={"Authorization": "Bearer some_access_token"}
-    )
+    response = await client.post("/api/v1/auth/logout")
 
     assert response.status_code == 204
     assert response.text == ""
@@ -793,7 +794,28 @@ async def test_logout_endpoint_success(
         ANY, ANY, "some_refresh_token", "some_access_token"
     )
 
-    # Verify cookie was deleted
+    # Verify cookies were deleted
     set_cookie_header = response.headers.get("set-cookie", "")
     assert settings.REFRESH_COOKIE in set_cookie_header
+    assert settings.ACCESS_COOKIE in set_cookie_header
     assert "Max-Age=0" in set_cookie_header or "expires=" in set_cookie_header.lower()
+
+
+async def test_get_current_user_profile_success(
+    client: AsyncClient, verified_login_user: dict[str, str]
+) -> None:
+    # Login to get cookies
+    response = await client.post("/api/v1/auth/login", json=verified_login_user)
+    assert response.status_code == 200
+
+    # Get profile using cookies automatically attached by the test client
+    me_response = await client.get("/api/v1/auth/me")
+    assert me_response.status_code == 200
+    data = me_response.json()
+    assert data["status"] == "success"
+    assert data["data"]["email"] == verified_login_user["email"]
+
+
+async def test_get_current_user_profile_unauthenticated(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/auth/me")
+    assert response.status_code == 401

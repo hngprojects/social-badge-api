@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -32,7 +33,7 @@ class _SessionContext:
 
 
 @pytest.fixture
-def patched_session_local(db_session: AsyncSession):
+def patched_session_local(db_session: AsyncSession) -> Iterator[None]:
     def factory() -> _SessionContext:
         return _SessionContext(db_session)
 
@@ -69,7 +70,7 @@ async def test_seed_platform_templates_inserts_all_entries(
 
     assert len(templates) == len(PLATFORM_TEMPLATES_SEED)
     inserted_titles = sorted(t.title for t in templates)
-    expected_titles = sorted(t["title"] for t in PLATFORM_TEMPLATES_SEED)
+    expected_titles = sorted(str(t["title"]) for t in PLATFORM_TEMPLATES_SEED)
     assert inserted_titles == expected_titles
 
 
@@ -83,7 +84,7 @@ async def test_seed_platform_templates_persists_canvas_data(
     templates = {t.title: t for t in result.scalars().all()}
 
     for entry in PLATFORM_TEMPLATES_SEED:
-        stored = templates[entry["title"]]
+        stored = templates[str(entry["title"])]
         assert stored.canvas_data == entry["canvas_data"]
         assert stored.thumbnail_url == entry["thumbnail_url"]
 
@@ -123,9 +124,10 @@ async def test_seed_platform_templates_inserts_only_missing_titles(
     assert len(templates) == len(PLATFORM_TEMPLATES_SEED)
     assert templates["Creative"].canvas_data == pre_existing_canvas
     for entry in PLATFORM_TEMPLATES_SEED:
-        if entry["title"] == "Creative":
+        title = str(entry["title"])
+        if title == "Creative":
             continue
-        assert templates[entry["title"]].canvas_data == entry["canvas_data"]
+        assert templates[title].canvas_data == entry["canvas_data"]
 
 
 @pytest.mark.usefixtures("patched_session_local")
@@ -141,9 +143,7 @@ async def test_seed_platform_templates_logs_when_already_seeded(
     with caplog.at_level(logging.INFO, logger="app.db.seed"):
         await seed_platform_templates()
 
-    assert any(
-        "already seeded" in record.message for record in caplog.records
-    )
+    assert any("already seeded" in record.message for record in caplog.records)
 
 
 @pytest.mark.usefixtures("patched_session_local")

@@ -59,7 +59,8 @@ async def seed_platform_templates() -> None:
 
         for data in to_insert:
             session.add(PlatformTemplate(**data))
-            
+            await session.flush()
+
         await session.commit()
         logger.info("Seeded %d platform templates.", len(to_insert))
 
