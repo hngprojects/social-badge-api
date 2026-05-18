@@ -8,6 +8,7 @@ from app.core.exceptions import (
     NotTemplateOwnerError,
     OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
+    PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
     TemplateInstanceForbiddenError,
     TemplateInstanceNotFoundError,
@@ -18,11 +19,13 @@ from app.schemas.response import ErrorResponse, SuccessResponse
 from app.schemas.template import (
     CreateTemplateInstanceRequest,
     LogoUploadResponse,
+    PublicParticipantPageResponse,
     PublishedTemplateResponse,
     TemplateInstanceResponse,
 )
 from app.services.template import (
     create_template_instance,
+    get_public_template_by_slug,
     publish_template,
     unpublish_template,
     upload_template_logo,
@@ -316,4 +319,73 @@ async def upload_logo(
     return SuccessResponse(
         message="Logo uploaded successfully.",
         data=LogoUploadResponse(logo_url=logo_url),
+    )
+
+
+@router.get(
+    "/p/{slug}",
+    response_model=SuccessResponse[PublicParticipantPageResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get public participant page data",
+    description=(
+        "Returns the public-facing template data needed to render the participant "
+        "page. No authentication required. Only returns data for published "
+        "templates — unpublished slugs return 404. Exposes only the fields "
+        "needed for public rendering, not organiser configuration internals."
+    ),
+    responses={
+        200: {
+            "description": "Published template data.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Template data retrieved successfully.",
+                        "data": {
+                            "title": "HNG Tech Fest 2026",
+                            "canvas_data": {"layout": "bold-v1"},
+                            "logo_url": "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png",
+                            "default_caption": "I'm attending HNG Tech Fest 2026!",
+                            "destination_link": "https://techfest.example.com",
+                            "hashtags": ["#HNGTechFest", "#2026"],
+                        },
+                    }
+                }
+            },
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "Slug not found or template is not published.",
+        },
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def get_participant_page(
+    request: Request,
+    session: DBSession,
+    slug: str,
+) -> SuccessResponse[PublicParticipantPageResponse]:
+    """Return public-facing template data for the participant page."""
+    try:
+        template = await get_public_template_by_slug(
+            session=session,
+            slug=slug,
+        )
+    except PublicTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+
+    return SuccessResponse(
+        message="Template data retrieved successfully.",
+        data=PublicParticipantPageResponse(
+            title=template.title,
+            canvas_data=template.canvas_data,
+            logo_url=template.logo_url,
+            default_caption=template.default_caption,
+            destination_link=template.destination_link,
+            hashtags=[h.hashtag for h in template.hashtags],
+        ),
     )

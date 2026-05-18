@@ -228,20 +228,7 @@ class UserResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str = Field(
-        ...,
-        description="Valid JWT access token issued on login.",
-        json_schema_extra={"example": "eyJhbGciOiJIIsInR5cCI6IkpXVCJ9.ey..."},
-    )
     user: UserResponse = Field(
         ...,
         description="The authenticated user's profile details.",
-    )
-
-
-class RefreshResponse(BaseModel):
-    access_token: str = Field(
-        ...,
-        description="Valid JWT access token issued on refresh.",
-        json_schema_extra={"example": "eyJhbGciOiJIIsInR5cCI6IkpXVCJ9.ey..."},
     )
