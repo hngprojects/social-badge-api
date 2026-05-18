@@ -1,0 +1,146 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5",
+    "name": "Badge Service API",
+    "description": "Badge generation service — create badges and check job status",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Badge Generation",
+      "item": [
+        {
+          "name": "Generate Badge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has job_id and status', function () {",
+                  "    let jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.job_id).to.exist;",
+                  "    pm.expect(jsonData.status).to.equal('queued');",
+                  "    pm.collectionVariables.set('job_id', jsonData.job_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_id\": \"44e4c525-806a-4e56-97e5-77e99fdc3447\",\n  \"participant_name\": \"John Doe\",\n  \"photo_url\": \"https://res.cloudinary.com/dioc2tnrm/image/upload/v1757737030/menu_images/20250913041710_337f67a8a07a48bfb61239975f61fdb7_OIP%20%2863%29.jpeg.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/badges/generate",
+              "host": ["{{base_url}}"],
+              "path": ["badges", "generate"]
+            }
+          },
+          "response": [
+            {
+              "name": "Success Response",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"template_id\": \"44e4c525-806a-4e56-97e5-77e99fdc3447\",\n  \"participant_name\": \"string\",\n  \"photo_url\": \"https://res.cloudinary.com/dioc2tnrm/image/upload/v1757737030/menu_images/20250913041710_337f67a8a07a48bfb61239975f61fdb7_OIP%20%2863%29.jpeg.jpg\"\n}"
+                },
+                "url": {
+                  "raw": "http://localhost:9001/badges/generate",
+                  "protocol": "http",
+                  "host": ["localhost"],
+                  "port": "9001",
+                  "path": ["badges", "generate"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"job_id\": \"6ed16db8-cda2-4997-b730-69c0261f2691\",\n  \"status\": \"queued\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Job Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Job has expected fields', function () {",
+                  "    let jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.job_id).to.exist;",
+                  "    pm.expect(jsonData.status).to.exist;",
+                  "    pm.expect(jsonData.badge_image_url).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/badges/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["badges", "jobs", "{{job_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "Completed Response",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "http://localhost:9001/badges/jobs/6ed16db8-cda2-4997-b730-69c0261f2691",
+                  "protocol": "http",
+                  "host": ["localhost"],
+                  "port": "9001",
+                  "path": ["badges", "jobs", "6ed16db8-cda2-4997-b730-69c0261f2691"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"job_id\": \"6ed16db8-cda2-4997-b730-69c0261f2691\",\n  \"status\": \"completed\",\n  \"badge_image_url\": \"http://localhost:9001/badges/badge_6ed16db8-cda2-4997-b730-69c0261f2691.png\",\n  \"error_message\": null\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9001"
+    },
+    {
+      "key": "job_id",
+      "value": ""
+    }
+  ]
+}
