@@ -39,6 +39,7 @@ async def platform_template(db_session: AsyncSession) -> PlatformTemplate:
     """Seed a single platform template for tests."""
     template = PlatformTemplate(
         title="Test Layout",
+        category="Test Category",
         canvas_data={"layout": "test-v1"},
         thumbnail_url=None,
     )
