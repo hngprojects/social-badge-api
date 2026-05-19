@@ -34,21 +34,26 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
+    LogoutAllResponse,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SessionListResponse,
     SignupRequest,
     UserResponse,
     VerifyEmailRequest,
 )
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.services.auth import (
+    _resolve_current_family_id,
     authenticate_with_google,
     build_google_auth_url,
+    list_user_sessions,
     logout_session,
     refresh_session,
     request_password_reset,
     resend_verification_email,
     reset_password,
+    revoke_all_user_sessions,
     set_access_cookie,
     set_refresh_cookie,
     signin,
@@ -675,3 +680,97 @@ async def google_callback(
     set_refresh_cookie(redirect, raw_refresh_token)
 
     return redirect
+
+
+@router.get(
+    "/sessions",
+    response_model=SuccessResponse[SessionListResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List active sessions",
+    description=(
+        "Returns all active (non-revoked, non-expired) sessions for the "
+        "current user. The is_current field identifies the session "
+        "associated with the refresh token cookie on this request."
+    ),
+    responses={
+        200: {"description": "Active sessions retrieved."},
+        401: {"model": ErrorResponse, "description": "Not authenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("10/minute")
+async def list_sessions(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> SuccessResponse[SessionListResponse]:
+    """Return paginated active sessions for the authenticated user."""
+    raw_refresh = request.cookies.get(settings.REFRESH_COOKIE)
+    current_family_id = await _resolve_current_family_id(session, raw_refresh)
+
+    data = await list_user_sessions(
+        session=session,
+        user_id=current_user.id,
+        current_family_id=current_family_id,
+        page=page,
+        limit=limit,
+    )
+
+    return SuccessResponse(
+        message="Active sessions retrieved.",
+        data=data,
+    )
+
+
+@router.post(
+    "/logout/all",
+    response_model=SuccessResponse[LogoutAllResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Logout all sessions",
+    description=(
+        "Revokes every active session for the current user across all devices. "
+        "Also blacklists the current access token."
+    ),
+    responses={
+        200: {"description": "All sessions terminated."},
+        401: {"model": ErrorResponse, "description": "Not authenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("5/minute")
+async def logout_all(
+    request: Request,
+    response: Response,
+    session: DBSession,
+    redis: RedisClient,
+    current_user: CurrentUser,
+) -> SuccessResponse[LogoutAllResponse]:
+    """Revoke all sessions for the current user."""
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
+
+    count = await revoke_all_user_sessions(
+        session=session,
+        redis=redis,
+        user_id=current_user.id,
+        access_token=access_token,
+    )
+
+    response.delete_cookie(
+        key=settings.REFRESH_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        key=settings.ACCESS_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+
+    return SuccessResponse(
+        message="All sessions have been terminated.",
+        data=LogoutAllResponse(sessions_revoked=count),
+    )

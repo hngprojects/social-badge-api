@@ -232,3 +232,36 @@ class LoginResponse(BaseModel):
         ...,
         description="The authenticated user's profile details.",
     )
+
+
+class SessionResponse(BaseModel):
+    """Schema representing an active session."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: UUID = Field(..., description="The refresh token record ID.")
+    user_agent: str | None = Field(None, description="Browser or client identifier.")
+    ip_address: str | None = Field(None, description="Partially masked IP address.")
+    created_at: datetime = Field(..., description="When this session was created.")
+    last_used_at: datetime | None = Field(
+        None, description="When this session last performed a token rotation."
+    )
+    expires_at: datetime = Field(..., description="When this session expires.")
+    is_current: bool = Field(
+        ..., description="True if this session matches the current refresh token."
+    )
+
+
+class SessionListResponse(BaseModel):
+    """Schema for a paginated list of active sessions."""
+
+    sessions: list[SessionResponse]
+    total: int
+    page: int
+    limit: int
+
+
+class LogoutAllResponse(BaseModel):
+    """Schema for the response of a logout-all request."""
+
+    sessions_revoked: int = Field(..., description="Number of sessions terminated.")
