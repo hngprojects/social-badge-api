@@ -144,7 +144,7 @@ async def test_seed_platform_templates_logs_when_already_seeded(
     with caplog.at_level(logging.INFO, logger="app.db.seed"):
         await seed_platform_templates()
 
-    assert any("Updated" in record.message for record in caplog.records)
+    assert any("already seeded" in record.message.lower() for record in caplog.records)
 
 
 @pytest.mark.usefixtures("patched_session_local")

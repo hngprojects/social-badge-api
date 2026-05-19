@@ -742,7 +742,7 @@ async def test_refresh_token_endpoint_success(
     assert data["message"] == "Token refreshed"
     assert data["data"] is None
 
-    mock_refresh.assert_awaited_once_with(ANY, ANY, "old_refresh_token", None)
+    mock_refresh.assert_awaited_once_with(ANY, ANY, "old_refresh_token", None, ANY)
 
     # Verify cookies were set
     assert settings.REFRESH_COOKIE in response.cookies

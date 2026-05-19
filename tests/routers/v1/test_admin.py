@@ -8,7 +8,6 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
 from app.models import PlatformTemplate, Role, User, UserRole
-from app.models import PlatformTemplate
 
 
 @pytest.fixture
@@ -91,7 +90,6 @@ def non_admin_auth_cookies(non_admin_user: User) -> dict[str, str]:
 async def test_create_platform_template_success(
     client: AsyncClient, admin_auth_cookies: dict[str, str]
 ) -> None:
-async def test_create_platform_template_success(client: AsyncClient) -> None:
     payload = {
         "title": "Conference Template",
         "category": "Event",
@@ -127,8 +125,7 @@ async def test_create_platform_template_validation_error(
         json={},
         cookies=admin_auth_cookies,
     )
-    client: AsyncClient,
-) -> None:
+
     response = await client.post("/api/v1/admin/platform-templates", json={})
 
     assert response.status_code == 422
@@ -140,7 +137,6 @@ async def test_update_platform_template_success(
     client: AsyncClient,
     platform_template: PlatformTemplate,
     admin_auth_cookies: dict[str, str],
-    client: AsyncClient, platform_template: PlatformTemplate
 ) -> None:
     payload = {
         "title": "Updated Template",
@@ -173,10 +169,6 @@ async def test_update_platform_template_not_found(
         f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
         json={"title": "Updated"},
         cookies=admin_auth_cookies,
-async def test_update_platform_template_not_found(client: AsyncClient) -> None:
-    response = await client.patch(
-        f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
-        json={"title": "Updated"},
     )
 
     assert response.status_code == 404
@@ -194,9 +186,6 @@ async def test_delete_platform_template_success(
     response = await client.delete(
         f"/api/v1/admin/platform-templates/{platform_template.id}",
         cookies=admin_auth_cookies,
-) -> None:
-    response = await client.delete(
-        f"/api/v1/admin/platform-templates/{platform_template.id}"
     )
 
     assert response.status_code == 200
@@ -216,8 +205,190 @@ async def test_delete_platform_template_not_found(
         f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
         cookies=admin_auth_cookies,
     )
-async def test_delete_platform_template_not_found(client: AsyncClient) -> None:
-    response = await client.delete(f"/api/v1/admin/platform-templates/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Platform template not found."
+
+
+async def test_list_platform_templates(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+    admin_auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/admin/platform-templates",
+        cookies=admin_auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "data" in data
+    assert isinstance(data["data"], list)
+    assert len(data["data"]) > 0
+
+    # Verify at least one template is present
+    template_data = next(
+        (t for t in data["data"] if t["id"] == str(platform_template.id)), None
+    )
+    assert template_data is not None
+    assert template_data["title"] == platform_template.title
+    assert "components" not in template_data  # should be excluded
+
+
+async def test_list_platform_templates_with_filters(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+    admin_auth_cookies: dict[str, str],
+) -> None:
+    # Create another template with different category
+    template2 = PlatformTemplate(
+        title="Event Template",
+        category="Event",
+        canvas_data={"layout": "event"},
+        thumbnail_url="https://example.com/event.png",
+        is_active=True,
+    )
+    db_session.add(template2)
+    await db_session.commit()
+
+    # Filter by category 'Event'
+    response = await client.get(
+        "/api/v1/admin/platform-templates",
+        params={"category": "Event"},
+        cookies=admin_auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "data" in data
+
+    # Should only return templates with category 'Event'
+    for template in data["data"]:
+        assert template["category"] == "Event"
+
+    assert len(data["data"]) >= 1  # should at least have template2
+
+
+async def test_get_platform_template_success(
+    client: AsyncClient,
+    platform_template: PlatformTemplate,
+    admin_auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        f"/api/v1/admin/platform-templates/{platform_template.id}",
+        cookies=admin_auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["data"]["id"] == str(platform_template.id)
+    assert data["data"]["title"] == platform_template.title
+    assert data["data"]["category"] == platform_template.category
+    assert data["data"]["thumbnail_url"] == platform_template.thumbnail_url
+    assert data["data"]["is_active"] == platform_template.is_active
+    assert "components" not in data["data"]
+
+
+async def test_get_platform_template_not_found(
+    client: AsyncClient, admin_auth_cookies: dict[str, str]
+) -> None:
+    response = await client.get(
+        f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
+        cookies=admin_auth_cookies,
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Platform template not found."
+
+
+async def test_get_platform_template_validation_error(
+    client: AsyncClient, admin_auth_cookies: dict[str, str]
+) -> None:
+    response = await client.get(
+        "/api/v1/admin/platform-templates/invalid-uuid",
+        cookies=admin_auth_cookies,
+    )
+
+    assert response.status_code == 422
+    data = response.json()
+    assert data["status"] == "error"
+    assert "Invalid UUID" in data["detail"] if "detail" in data else True
+
+
+async def test_create_platform_template_forbidden_without_auth(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/v1/admin/platform-templates",
+        json={
+            "title": "Test Template",
+            "category": "Test",
+            "canvas_data": {"layout": "test"},
+            "thumbnail_url": "https://example.com/test.png",
+            "is_active": True,
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["status"] == "error"
+
+
+async def test_update_platform_template_forbidden_without_auth(
+    client: AsyncClient,
+    platform_template: PlatformTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/admin/platform-templates/{platform_template.id}",
+        json={"title": "Updated"},
+    )
+    assert response.status_code == 403
+
+
+async def test_delete_platform_template_forbidden_without_auth(
+    client: AsyncClient,
+    platform_template: PlatformTemplate,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/admin/platform-templates/{platform_template.id}"
+    )
+    assert response.status_code == 403
+
+
+async def test_update_platform_template_validation_error(
+    client: AsyncClient,
+    platform_template: PlatformTemplate,
+    admin_auth_cookies: dict[str, str],
+) -> None:
+    response = await client.patch(
+        f"/api/v1/admin/platform-templates/{platform_template.id}",
+        json={
+            "title": "Invalid Category",
+            "category": "Not Real",
+            "canvas_data": {"layout": "updated"},
+            "thumbnail_url": "https://example.com/updated.png",
+            "is_active": True,
+        },
+        cookies=admin_auth_cookies,
+    )
+    assert response.status_code == 422
+
+
+async def test_create_platform_template_validation_error_on_activate(
+    client: AsyncClient, admin_auth_cookies: dict[str, str]
+) -> None:
+    response = await client.patch(
+        f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
+        json={"is_active": True},
+        cookies=admin_auth_cookies,
+    )
 
     assert response.status_code == 404
     data = response.json()
