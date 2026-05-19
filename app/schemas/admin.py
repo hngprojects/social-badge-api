@@ -16,9 +16,9 @@ _VALID_TEMPLATE_CATEGORIES: frozenset[str] = frozenset(
         "meetups",
         "speakers",
         "trending",
-        "General",
-        "Event",
-        "Updated Event",
+        "general",
+        "event",
+        "updated event",
     }
 )
 
@@ -102,7 +102,7 @@ class CreatePlatformTemplateRequest(BaseModel):
     @field_validator("category")
     @classmethod
     def validate_category(cls, v: str) -> str:
-        if v not in _VALID_TEMPLATE_CATEGORIES:
+        if v.lower() not in _VALID_TEMPLATE_CATEGORIES:
             raise ValueError(
                 f"Invalid category '{v}'. Valid options: "
                 + ", ".join(sorted(_VALID_TEMPLATE_CATEGORIES))
@@ -189,7 +189,7 @@ class UpdatePlatformTemplateRequest(BaseModel):
     @field_validator("category")
     @classmethod
     def validate_category(cls, v: str | None) -> str | None:
-        if v is not None and v not in _VALID_TEMPLATE_CATEGORIES:
+        if v is not None and v.lower() not in _VALID_TEMPLATE_CATEGORIES:
             raise ValueError(
                 f"Invalid category '{v}'. Valid options: "
                 + ", ".join(sorted(_VALID_TEMPLATE_CATEGORIES))

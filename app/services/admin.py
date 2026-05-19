@@ -34,11 +34,15 @@ async def create_platform_template(
 async def list_platform_templates(
     session: AsyncSession,
     category: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[PlatformTemplate]:
-    """Return all platform templates, optionally filtered by category."""
+    """Return platform templates, optionally filtered by category
+    with limit/offset pagination."""
     stmt = select(PlatformTemplate)
     if category is not None:
         stmt = stmt.where(PlatformTemplate.category == category)
+    stmt = stmt.limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 

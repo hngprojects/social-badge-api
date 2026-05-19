@@ -175,12 +175,19 @@ async def delete_template(
     status_code=status.HTTP_200_OK,
     summary="List platform templates",
 )
+@limiter.limit("30/minute")
 async def list_templates(
+    request: Request,
     session: DBSession,
     category: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ) -> SuccessResponse[list[PlatformTemplateResponse]]:
-    """List all platform templates, optionally filtered by category."""
-    templates = await list_platform_templates(session=session, category=category)
+    """List platform templates, optionally filtered by category,
+    with limit/offset pagination."""
+    templates = await list_platform_templates(
+        session=session, category=category, limit=limit, offset=offset
+    )
     return SuccessResponse(
         message="Platform templates retrieved successfully.",
         data=[PlatformTemplateResponse.model_validate(t) for t in templates],
@@ -207,7 +214,9 @@ async def list_templates(
         },
     },
 )
+@limiter.limit("30/minute")
 async def get_template(
+    request: Request,
     session: DBSession,
     template_id: UUID,
 ) -> SuccessResponse[PlatformTemplateResponse]:
