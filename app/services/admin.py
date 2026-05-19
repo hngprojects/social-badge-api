@@ -42,7 +42,7 @@ async def list_platform_templates(
     stmt = select(PlatformTemplate)
     if category is not None:
         stmt = stmt.where(PlatformTemplate.category == category)
-    stmt = stmt.limit(limit).offset(offset)
+    stmt = stmt.order_by(PlatformTemplate.created_at.asc()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
