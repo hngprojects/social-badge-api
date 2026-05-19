@@ -89,7 +89,7 @@ class PlatformTemplate(Base):
         primary_key=True, default=uuid7, index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     canvas_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
