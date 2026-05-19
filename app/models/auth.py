@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from uuid_utils import uuid7
 
@@ -58,3 +58,11 @@ class RefreshToken(Base):
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+    
+    family_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

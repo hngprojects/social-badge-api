@@ -76,6 +76,9 @@ class Settings(BaseSettings):
 
     MAX_SLUG_RETRIES: int = 5
 
+    REFRESH_REUSE_GRACE_SECONDS: int = 5
+    SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, val: Any) -> list[str] | str:
