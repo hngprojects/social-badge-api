@@ -877,7 +877,7 @@ async def test_verify_email_stores_refresh_token_metadata(
     await db_session.commit()
     await db_session.refresh(user)
 
-    raw_token = "meta-verify-token" # noqa: S105
+    raw_token = "meta-verify-token"  # noqa: S105
     token_hash = hash_token(raw_token)
     await fake_redis.set(f"verify:{token_hash}", str(user.id))
 
