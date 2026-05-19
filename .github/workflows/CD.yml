@@ -72,13 +72,13 @@ jobs:
             .venv/bin/alembic upgrade head
             pm2 restart social-badge-api --update-env
             sleep 10
-            if ! curl -sf http://localhost:8000/probe; then
+            if ! curl -sf http://localhost:8000/api/v1/health; then
               echo "Deploy failed, rolling back to $PREVIOUS_COMMIT..."
               git reset --hard $PREVIOUS_COMMIT
               uv sync
               pm2 restart social-badge-api --update-env
               sleep 10
-              if ! curl -sf http://localhost:8000/probe; then
+              if ! curl -sf http://localhost:8000/api/v1/health; then
                 echo "Rollback also failed. Manual intervention required."
                 exit 2
               fi

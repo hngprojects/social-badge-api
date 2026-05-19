@@ -27,12 +27,20 @@ async def seed_platform_templates() -> None:
         for data in PLATFORM_TEMPLATES_SEED:
             if data["title"] in existing:
                 row = existing[data["title"]]
-                # Keep canvas_data and category in sync with the seed definition
-                row.canvas_data = data["canvas_data"]
-                row.category = data["category"]
-                if data["thumbnail_url"] is not None:
-                    row.thumbnail_url = data["thumbnail_url"]
-                updated += 1
+                # Sync with the seed definition if fields changed
+                changed = False
+                if row.canvas_data != data["canvas_data"]:
+                    row.canvas_data = data["canvas_data"]
+                    changed = True
+                if row.category != data["category"]:
+                    row.category = data["category"]
+                    changed = True
+                target_thumb = data["thumbnail_url"]
+                if target_thumb is not None and row.thumbnail_url != target_thumb:
+                    row.thumbnail_url = target_thumb
+                    changed = True
+                if changed:
+                    updated += 1
             else:
                 session.add(
                     PlatformTemplate(
@@ -46,10 +54,10 @@ async def seed_platform_templates() -> None:
 
         await session.commit()
         if inserted == 0 and updated == 0:
-             logger.info(
-                 "Platform templates already seeded (%d found).",
-                 len(existing),
-             )
+            logger.info(
+                "Platform templates already seeded (%d found).",
+                len(existing),
+            )
         elif inserted == 0:
             logger.info("Updated %d existing platform templates.", updated)
         else:
@@ -58,9 +66,6 @@ async def seed_platform_templates() -> None:
                 inserted,
                 updated,
             )
-
-
-
 
 
 async def main() -> None:
