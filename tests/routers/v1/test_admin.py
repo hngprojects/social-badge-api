@@ -102,7 +102,6 @@ async def test_create_platform_template_success(
         json=payload,
         cookies=admin_auth_cookies,
     )
-    response = await client.post("/api/v1/admin/platform-templates", json=payload)
 
     assert response.status_code == 201
     data = response.json()
@@ -125,8 +124,6 @@ async def test_create_platform_template_validation_error(
         json={},
         cookies=admin_auth_cookies,
     )
-
-    response = await client.post("/api/v1/admin/platform-templates", json={})
 
     assert response.status_code == 422
     data = response.json()

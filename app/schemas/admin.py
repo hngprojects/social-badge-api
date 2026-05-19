@@ -4,7 +4,23 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_VALID_TEMPLATE_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "festivals",
+        "hackathons",
+        "conferences",
+        "community",
+        "bootcamp",
+        "meetups",
+        "speakers",
+        "trending",
+        "General",
+        "Event",
+        "Updated Event",
+    }
+)
 
 
 class CreatePlatformTemplateRequest(BaseModel):
@@ -83,6 +99,16 @@ class CreatePlatformTemplateRequest(BaseModel):
     thumbnail_url: str | None = None
     is_active: bool = True
 
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        if v not in _VALID_TEMPLATE_CATEGORIES:
+            raise ValueError(
+                f"Invalid category '{v}'. Valid options: "
+                + ", ".join(sorted(_VALID_TEMPLATE_CATEGORIES))
+            )
+        return v
+
 
 class UpdatePlatformTemplateRequest(BaseModel):
     """Payload for updating a platform template."""
@@ -159,6 +185,16 @@ class UpdatePlatformTemplateRequest(BaseModel):
     canvas_data: dict[str, Any] | None = None
     thumbnail_url: str | None = None
     is_active: bool | None = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_TEMPLATE_CATEGORIES:
+            raise ValueError(
+                f"Invalid category '{v}'. Valid options: "
+                + ", ".join(sorted(_VALID_TEMPLATE_CATEGORIES))
+            )
+        return v
 
 
 class PlatformTemplateResponse(BaseModel):

@@ -1,5 +1,6 @@
 """Service layer for platform template CRUD operations."""
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,7 +13,7 @@ async def create_platform_template(
     session: AsyncSession,
     title: str,
     category: str,
-    canvas_data: dict | None,
+    canvas_data: dict[Any, Any] | None,
     thumbnail_url: str | None,
     is_active: bool,
 ) -> PlatformTemplate:
@@ -30,9 +31,15 @@ async def create_platform_template(
     return template
 
 
-async def list_platform_templates(session: AsyncSession) -> list[PlatformTemplate]:
-    """Return all platform templates."""
-    result = await session.execute(select(PlatformTemplate))
+async def list_platform_templates(
+    session: AsyncSession,
+    category: str | None = None,
+) -> list[PlatformTemplate]:
+    """Return all platform templates, optionally filtered by category."""
+    stmt = select(PlatformTemplate)
+    if category is not None:
+        stmt = stmt.where(PlatformTemplate.category == category)
+    result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -48,7 +55,7 @@ async def update_platform_template(
     template: PlatformTemplate,
     title: str | None,
     category: str | None,
-    canvas_data: dict | None,
+    canvas_data: dict[Any, Any] | None,
     thumbnail_url: str | None,
     is_active: bool | None,
 ) -> PlatformTemplate:
