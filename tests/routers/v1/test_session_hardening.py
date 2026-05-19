@@ -186,7 +186,7 @@ async def test_logout_all_revokes_all_user_sessions(
         },
     )
     assert response.status_code == 200
-    assert response.json()["data"]["sessions_revoked"] >= 1
+    assert response.json()["data"]["sessions_revoked"] == 2
 
     refresh_response = await client.post(
         "/api/v1/auth/refresh",
@@ -274,7 +274,10 @@ async def test_security_email_dispatched_on_reuse_detection(
             "/api/v1/auth/refresh",
             cookies={settings.REFRESH_COOKIE: refresh},
         )
-        await asyncio.sleep(ASYNC_SLEEP_SECONDS)
+        for _ in range(int(ASYNC_SLEEP_SECONDS / 0.01)):
+            if mock_alert.called:
+                break
+            await asyncio.sleep(0.01)
         mock_alert.assert_called_once()
 
 

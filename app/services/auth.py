@@ -826,8 +826,13 @@ async def _resolve_current_family_id(
     if not raw_refresh_token:
         return None
     token_hash_str = await asyncio.to_thread(hash_token, raw_refresh_token)
+    now = datetime.now(UTC)
     result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == token_hash_str)
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash_str,
+            RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > now,
+        )
     )
     row = result.scalars().first()
     return row.family_id if row else None
@@ -840,11 +845,13 @@ async def revoke_all_user_sessions(
     access_token: str | None,
 ) -> int:
     """Revoke every active session for this user."""
+    now = datetime.now(UTC)
     result = await session.execute(
         update(RefreshToken)
         .where(
             RefreshToken.user_id == user_id,
             RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > now,
         )
         .values(is_revoked=True)
         .returning(RefreshToken.id)
