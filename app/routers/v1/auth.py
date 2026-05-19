@@ -520,6 +520,7 @@ async def forgot_password(
 @limiter.limit("10/minute")
 async def verify_email(
     request: Request,
+    response: Response,
     session: DBSession,
     redis: RedisClient,
     payload: VerifyEmailRequest,
@@ -550,6 +551,17 @@ async def verify_email(
 
     user.is_email_verified = True
     session.add(user)
+
+    access_token = create_access_token(user.id)
+    raw_refresh_token, expire = create_refresh_token(user.id)
+
+    refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=hash_token(raw_refresh_token),
+        expires_at=expire,
+    )
+    session.add(refresh_token)
+
     try:
         await session.commit()
     except SQLAlchemyError:
@@ -558,6 +570,9 @@ async def verify_email(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database update failed, please try again",
         ) from None
+
+    set_access_cookie(response, access_token)
+    set_refresh_cookie(response, raw_refresh_token)
 
     return SuccessResponse(message="Email verified", data={"next": "onboarding"})
 

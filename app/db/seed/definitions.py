@@ -1,5 +1,8 @@
 from typing import Any
 
+ROLE_SEED: list[str] = ["admin", "user"]
+ADMIN_SEED_EMAILS: list[str] = []
+
 _GRADIENT_OPTIONS = [
     {"colors": ["#FF6B6B", "#FF8E53"], "direction": "135deg"},  # red/orange
     {"colors": ["#2D2D6B", "#4B4BA0"], "direction": "135deg"},  # dark blue/purple
