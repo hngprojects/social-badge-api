@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     ACCESS_COOKIE: str = "access_token"
     REFRESH_COOKIE: str = "refresh_token"
+    COOKIE_DOMAIN: str = ""
 
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_WINDOW: int = 900  # 15 minutes in seconds
