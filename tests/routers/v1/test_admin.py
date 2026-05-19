@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
 from app.models import PlatformTemplate, Role, User, UserRole
+from app.models import PlatformTemplate
 
 
 @pytest.fixture
@@ -90,6 +91,7 @@ def non_admin_auth_cookies(non_admin_user: User) -> dict[str, str]:
 async def test_create_platform_template_success(
     client: AsyncClient, admin_auth_cookies: dict[str, str]
 ) -> None:
+async def test_create_platform_template_success(client: AsyncClient) -> None:
     payload = {
         "title": "Conference Template",
         "category": "Event",
@@ -102,6 +104,7 @@ async def test_create_platform_template_success(
         json=payload,
         cookies=admin_auth_cookies,
     )
+    response = await client.post("/api/v1/admin/platform-templates", json=payload)
 
     assert response.status_code == 201
     data = response.json()
@@ -124,6 +127,9 @@ async def test_create_platform_template_validation_error(
         json={},
         cookies=admin_auth_cookies,
     )
+    client: AsyncClient,
+) -> None:
+    response = await client.post("/api/v1/admin/platform-templates", json={})
 
     assert response.status_code == 422
     data = response.json()
@@ -134,6 +140,7 @@ async def test_update_platform_template_success(
     client: AsyncClient,
     platform_template: PlatformTemplate,
     admin_auth_cookies: dict[str, str],
+    client: AsyncClient, platform_template: PlatformTemplate
 ) -> None:
     payload = {
         "title": "Updated Template",
@@ -166,6 +173,10 @@ async def test_update_platform_template_not_found(
         f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
         json={"title": "Updated"},
         cookies=admin_auth_cookies,
+async def test_update_platform_template_not_found(client: AsyncClient) -> None:
+    response = await client.patch(
+        f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
+        json={"title": "Updated"},
     )
 
     assert response.status_code == 404
@@ -183,6 +194,9 @@ async def test_delete_platform_template_success(
     response = await client.delete(
         f"/api/v1/admin/platform-templates/{platform_template.id}",
         cookies=admin_auth_cookies,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/admin/platform-templates/{platform_template.id}"
     )
 
     assert response.status_code == 200
@@ -202,6 +216,8 @@ async def test_delete_platform_template_not_found(
         f"/api/v1/admin/platform-templates/{uuid.uuid4()}",
         cookies=admin_auth_cookies,
     )
+async def test_delete_platform_template_not_found(client: AsyncClient) -> None:
+    response = await client.delete(f"/api/v1/admin/platform-templates/{uuid.uuid4()}")
 
     assert response.status_code == 404
     data = response.json()
