@@ -11,6 +11,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
     from app.models import OrganiserTemplate
     from app.models.auth import AuthProvider, RefreshToken
+    from app.models.roles import Role, UserRole
 
 
 class User(Base):
@@ -51,4 +52,17 @@ class User(Base):
         "OrganiserTemplate",
         back_populates="organiser",
         cascade="all, delete-orphan",
+    )
+
+    user_roles: Mapped[list["UserRole"]] = relationship(
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    roles: Mapped[list["Role"]] = relationship(
+        "Role",
+        secondary="user_roles",
+        back_populates="users",
+        overlaps="user_roles,user,role",
     )

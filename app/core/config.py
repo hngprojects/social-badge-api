@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     ACCESS_COOKIE: str = "access_token"
     REFRESH_COOKIE: str = "refresh_token"
+    COOKIE_DOMAIN: str = ""
 
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_WINDOW: int = 900  # 15 minutes in seconds
@@ -74,6 +75,9 @@ class Settings(BaseSettings):
     LOGO_FOLDER: str = "template-logos"
 
     MAX_SLUG_RETRIES: int = 5
+
+    REFRESH_REUSE_GRACE_SECONDS: int = 5
+    SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

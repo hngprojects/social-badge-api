@@ -5,12 +5,14 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyCookie
 from jose import JWTError, jwt
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.token import is_token_blacklisted
 from app.db.redis import get_redis_client
 from app.db.session import get_session
+from app.models.roles import Role, UserRole
 from app.models.users import User
 
 DBSession = Annotated[AsyncSession, Depends(get_session)]
@@ -73,3 +75,24 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_current_admin(
+    session: DBSession,
+    current_user: CurrentUser,
+) -> User:
+    stmt = (
+        select(Role.id)
+        .join(UserRole, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == current_user.id, Role.name == "admin")
+    )
+    result = await session.execute(stmt)
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+
+CurrentAdmin = Annotated[User, Depends(get_current_admin)]
