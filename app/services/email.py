@@ -1,6 +1,7 @@
 import asyncio
 import html
 import logging
+from datetime import datetime
 from email.message import EmailMessage
 
 import aiosmtplib
@@ -89,6 +90,22 @@ def _build_confirmation_html(
         f"<p>If you need to follow up, just reply to this email and "
         f"include your reference ID.</p>"
         f"<p>— The Flare Tag Team</p>"
+    )
+
+
+def _build_security_alert_html(detected_at: datetime) -> str:
+    formatted = detected_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return (
+        "<h2>Security alert from Flare Tag</h2>"
+        "<p>We detected suspicious activity on your account. "
+        "A previously-used session token was presented again, "
+        "which may indicate that your session was stolen.</p>"
+        f"<p><strong>Time of detected reuse:</strong> {formatted}</p>"
+        "<p>As a precaution, we have terminated all active sessions on your account. "
+        "You will need to log in again on all your devices.</p>"
+        "<p>If you did not initiate this activity, we strongly recommend "
+        "changing your password immediately.</p>"
+        "<p>— The Flare Tag Security Team</p>"
     )
 
 
@@ -194,6 +211,30 @@ async def send_password_reset_email(to: str, token: str) -> None:
         raise EmailDeliveryError(
             f"Failed to send password reset email to {to}"
         ) from exc
+
+
+async def send_security_alert_email(to: str, detected_at: datetime) -> None:
+    params: resend.Emails.SendParams = {
+        "from": settings.RESEND_FROM_EMAIL,
+        "to": [to],
+        "subject": settings.SECURITY_ALERT_SUBJECT,
+        "html": _build_security_alert_html(detected_at),
+    }
+
+    try:
+        await asyncio.to_thread(resend.Emails.send, params)
+    except resend.exceptions.ResendError:
+        logger.warning(
+            "Resend failed for security alert to %s, trying SMTP fallback", to
+        )
+        await _send_smtp_email(
+            to=to,
+            subject=settings.SECURITY_ALERT_SUBJECT,
+            html_content=params["html"],
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error sending security alert to %s", to)
+        raise EmailDeliveryError(f"Failed to send security alert to {to}") from exc
 
 
 async def send_contact_notification(

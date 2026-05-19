@@ -1,4 +1,6 @@
 import logging
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -18,6 +20,7 @@ from app.core.exceptions import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
 )
+from app.core.ip import get_client_ip
 from app.core.rate_limit import limiter
 from app.core.token import (
     create_access_token,
@@ -317,7 +320,9 @@ async def login(
     response: Response,
 ) -> SuccessResponse[LoginResponse]:
     try:
-        user, access_token, refresh_token = await signin(session, redis, payload)
+        user, access_token, refresh_token = await signin(
+            session, redis, payload, request
+        )
 
     except EmailNotVerifiedError as unverified_exc:
         raise HTTPException(
@@ -395,7 +400,7 @@ async def refresh(
 
     try:
         new_access, new_refresh = await refresh_session(
-            session, redis, refresh_token, access_token
+            session, redis, refresh_token, access_token, request
         )
     except InvalidRefreshTokenError as exc:
         raise HTTPException(
@@ -555,10 +560,15 @@ async def verify_email(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] or None),
+        ip_address=get_client_ip(request),
+        last_used_at=now,
     )
     session.add(refresh_token)
 
@@ -643,10 +653,15 @@ async def google_callback(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] or None),
+        ip_address=get_client_ip(request),
+        last_used_at=now,
     )
     session.add(refresh_token)
     await session.commit()

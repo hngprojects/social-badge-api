@@ -3,15 +3,16 @@ import base64
 import binascii
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
-from fastapi import Response
+from fastapi import Request, Response
 from jose import JWTError, jwt
 from redis.asyncio import Redis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,7 @@ from app.core.exceptions import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
 )
+from app.core.ip import get_client_ip
 from app.core.security import hash_password, verify_password
 from app.core.token import (
     blacklist_token,
@@ -53,6 +55,7 @@ from app.schemas.auth import (
 from app.services.email import (
     send_account_lock_email,
     send_password_reset_email,
+    send_security_alert_email,
     send_verification_email,
 )
 
@@ -166,6 +169,7 @@ async def signin(
     session: AsyncSession,
     redis: Redis,
     payload: LoginRequest,
+    request: Request | None = None,
 ) -> tuple[User, str, str]:
     await check_lockout(redis, payload.email)
 
@@ -204,10 +208,19 @@ async def signin(
     access_token = create_access_token(existing_user.id)
     raw_refresh_token, expire = create_refresh_token(existing_user.id)
 
+    family_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
     refresh_token = RefreshToken(
         user_id=existing_user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=family_id,
+        user_agent=(
+            (request.headers.get("user-agent", "")[:1000] or None) if request else None
+        ),
+        ip_address=get_client_ip(request) if request else None,
+        last_used_at=now,
     )
     session.add(refresh_token)
 
@@ -242,52 +255,110 @@ async def _blacklist_access_token_if_valid(
         await blacklist_token(redis, jti, remaining)
 
 
+async def _send_security_alert_best_effort(email: str, detected_at: datetime) -> None:
+    try:
+        await send_security_alert_email(email, detected_at)
+    except Exception:
+        logger.exception(
+            "Security alert failed to deliver to %s — revocation complete",
+            email,
+        )
+
+
 async def refresh_session(
     session: AsyncSession,
     redis: Redis,
     raw_refresh_token: str,
     access_token: str | None,
+    request: Request | None = None,
 ) -> tuple[str, str]:
     token_hash_str = await asyncio.to_thread(hash_token, raw_refresh_token)
 
     result = await session.execute(
         select(RefreshToken).where(RefreshToken.token_hash == token_hash_str)
     )
-    refresh_token_obj = result.scalars().first()
+    token_obj = result.scalars().first()
 
-    if not refresh_token_obj:
+    if not token_obj:
         raise InvalidRefreshTokenError
 
-    if refresh_token_obj.is_revoked:
+    now = datetime.now(UTC)
+
+    if token_obj.is_revoked:
+        if token_obj.last_used_at is not None:
+            last_used = token_obj.last_used_at
+            if last_used.tzinfo is None:
+                last_used = last_used.replace(tzinfo=UTC)
+            delta = (now - last_used).total_seconds()
+            if delta <= settings.REFRESH_REUSE_GRACE_SECONDS:
+                raise InvalidRefreshTokenError
+
+        update_result = await session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.family_id == token_obj.family_id,
+                RefreshToken.is_revoked.is_(False),
+            )
+            .values(is_revoked=True)
+        )
+        await session.commit()
+
+        if getattr(update_result, "rowcount", 0) > 0:
+            user = await session.get(User, token_obj.user_id)
+            if user:
+                asyncio.create_task(_send_security_alert_best_effort(user.email, now))
+
+        logger.warning(
+            "refresh_token.reuse_detected",
+            extra={
+                "user_id": str(token_obj.user_id),
+                "family_id": str(token_obj.family_id),
+            },
+        )
         raise InvalidRefreshTokenError
 
-    # Ensure timezone awareness for comparison
-    expires_at = refresh_token_obj.expires_at
+    expires_at = token_obj.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
 
-    if expires_at < datetime.now(UTC):
+    if expires_at < now:
         raise InvalidRefreshTokenError
 
-    user = await session.get(User, refresh_token_obj.user_id)
+    user = await session.get(User, token_obj.user_id)
     if not user:
         raise InvalidRefreshTokenError
 
     await _blacklist_access_token_if_valid(redis, access_token)
 
+    token_obj.is_revoked = True
+    token_obj.last_used_at = now
+
     new_raw_refresh, new_expire = create_refresh_token(user.id)
-    new_refresh_obj = RefreshToken(
+    new_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(new_raw_refresh),
         expires_at=new_expire,
+        family_id=token_obj.family_id,
+        user_agent=(
+            request.headers.get("user-agent", "")[:1000]
+            if request
+            else token_obj.user_agent
+        ),
+        ip_address=(get_client_ip(request) if request else token_obj.ip_address),
+        last_used_at=now,
     )
-    session.add(new_refresh_obj)
-
-    refresh_token_obj.is_revoked = True
+    session.add(new_token)
 
     new_access_token = create_access_token(user.id)
-
     await session.commit()
+
+    logger.info(
+        "refresh_token.rotated",
+        extra={
+            "user_id": str(user.id),
+            "family_id": str(token_obj.family_id),
+        },
+    )
 
     return new_access_token, new_raw_refresh
 
@@ -657,6 +728,7 @@ async def exchange_google_code_for_tokens(
     session: AsyncSession,
     redis: Redis,
     code: str,
+    request: Request | None = None,
 ) -> tuple[User, str, str]:
     code_hash = hash_token(code)
     user_id_str = await get_google_exchange_user_id(redis, code_hash)
@@ -671,10 +743,15 @@ async def exchange_google_code_for_tokens(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] if request else None),
+        ip_address=(get_client_ip(request) if request else None),
+        last_used_at=now,
     )
     session.add(refresh_token)
     await session.commit()
