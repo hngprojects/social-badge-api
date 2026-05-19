@@ -2,10 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.rate_limit import limiter
-from app.dependencies import DBSession
+from app.dependencies import DBSession, get_current_admin
 from app.schemas.admin import (
     CreatePlatformTemplateRequest,
     PlatformTemplateResponse,
@@ -19,7 +19,7 @@ from app.services.admin import (
     update_platform_template,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_admin)])
 """Admin API router for platform templates."""
 
 

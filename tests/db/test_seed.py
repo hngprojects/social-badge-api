@@ -162,9 +162,15 @@ async def test_seed_platform_templates_logs_count_on_insert(
 
 
 async def test_main_invokes_seed_platform_templates() -> None:
-    with patch(
-        "app.db.seed.seeder.seed_platform_templates", new_callable=AsyncMock
-    ) as mock_seed:
+    with (
+        patch(
+            "app.db.seed.seeder.seed_platform_templates", new_callable=AsyncMock
+        ) as mock_seed_templates,
+        patch(
+            "app.db.seed.seeder.seed_roles", new_callable=AsyncMock
+        ) as mock_seed_roles,
+    ):
         await main()
 
-    mock_seed.assert_awaited_once()
+    mock_seed_roles.assert_awaited_once()
+    mock_seed_templates.assert_awaited_once()
