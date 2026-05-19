@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
     EmailDeliveryError,
     EmailNotVerifiedError,
@@ -122,15 +123,12 @@ async def resend_verification_email(
         return
 
     if user.is_email_verified:
-        return
+        raise EmailAlreadyVerifiedError
 
     raw_token, token_hash = generate_token()
     await store_verification_token(redis, token_hash, str(user.id))
 
-    try:
-        await send_verification_email(user.email, raw_token)
-    except EmailDeliveryError:
-        pass
+    await send_verification_email(user.email, raw_token)
 
 
 async def reset_password(
@@ -313,24 +311,32 @@ async def logout_session(
     await _blacklist_access_token_if_valid(redis, access_token)
 
 
-def set_access_cookie(response: Response, access_token: str) -> None:
+def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> None:
     response.set_cookie(
-        key=settings.ACCESS_COOKIE,
-        value=access_token,
+        key=key,
+        value=value,
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
+        max_age=max_age,
+        domain=settings.COOKIE_DOMAIN,
+    )
+
+
+def set_access_cookie(response: Response, access_token: str) -> None:
+    _set_auth_cookie(
+        response,
+        key=settings.ACCESS_COOKIE,
+        value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
-    response.set_cookie(
+    _set_auth_cookie(
+        response,
         key=settings.REFRESH_COOKIE,
         value=refresh_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
@@ -380,10 +386,7 @@ async def request_password_reset(
     raw_token, token_hash = generate_token()
     await store_password_reset_token(redis, token_hash, str(user.id))
 
-    try:
-        await send_password_reset_email(payload.email, raw_token)
-    except EmailDeliveryError:
-        logger.warning("Failed to send password reset email to %s", payload.email)
+    await send_password_reset_email(payload.email, raw_token)
 
 
 async def build_google_auth_url(redis: Redis) -> str:
