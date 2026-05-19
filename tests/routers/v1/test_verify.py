@@ -91,3 +91,38 @@ async def test_verify_email_already_verified(
 
     assert response.status_code == 400
     assert "already verified" in response.json()["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_email_success_sets_cookies(
+    client: AsyncClient,
+    db_session: DBSession,
+    fake_redis: RedisClient,
+    verification_token: str,
+) -> None:
+    user = User(
+        first_name="Verify",
+        last_name="Me",
+        email="verify_cookies@example.com",
+        password_hash="...",  # noqa: S106
+        is_email_verified=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    token_hash = hash_token(verification_token)
+    token_key = f"verify:{token_hash}"
+    await fake_redis.set(token_key, str(user.id))
+
+    response = await client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": verification_token},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Email verified"
+
+    cookies = response.cookies
+    assert "access_token" in cookies
+    assert "refresh_token" in cookies
