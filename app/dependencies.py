@@ -86,6 +86,10 @@ async def get_current_admin(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin access required",
     )
+    _unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
     if not token:
         raise _forbidden
     try:
@@ -96,7 +100,7 @@ async def get_current_admin(
             algorithms=[settings.ALGORITHM],
         )
     except JWTError:
-        raise _forbidden from None
+        raise _unauthorized from None
 
     jti = payload.get("jti")
     if not jti or await is_token_blacklisted(redis, jti):
