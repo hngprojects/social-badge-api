@@ -9,11 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import hash_password
 from app.core.token import hash_token
 from app.models.auth import RefreshToken
 from app.models.users import User
-from app.core.security import hash_password
-
 
 ASYNC_SLEEP_SECONDS = 0.1
 
@@ -97,7 +96,8 @@ async def test_reuse_of_revoked_token_revokes_family(
     new_refresh = rotate_response.cookies.get(settings.REFRESH_COOKIE)
     assert new_refresh is not None
 
-    # Outside grace window so reuse triggers family revocation, not duplicate-request handling.
+    # Outside grace window so reuse triggers family revocation,
+    # not duplicate-request handling.
     token_hash = hash_token(original_refresh)
     result = await db_session.execute(
         select(RefreshToken).where(RefreshToken.token_hash == token_hash)

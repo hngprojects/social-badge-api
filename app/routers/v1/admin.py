@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.core.rate_limit import limiter
 from app.dependencies import DBSession, get_current_admin
@@ -16,11 +16,11 @@ from app.services.admin import (
     create_platform_template,
     delete_platform_template,
     get_platform_template,
+    list_platform_templates,
     update_platform_template,
 )
 
 router = APIRouter(dependencies=[Depends(get_current_admin)])
-router = APIRouter()
 """Admin API router for platform templates."""
 
 
@@ -167,3 +167,67 @@ async def delete_template(
         )
     await delete_platform_template(session=session, template=template)
     return SuccessResponse(message="Platform template deleted successfully.")
+
+
+@router.get(
+    "/platform-templates",
+    response_model=SuccessResponse[list[PlatformTemplateResponse]],
+    status_code=status.HTTP_200_OK,
+    summary="List platform templates",
+)
+@limiter.limit("30/minute")
+async def list_templates(
+    request: Request,
+    session: DBSession,
+    category: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> SuccessResponse[list[PlatformTemplateResponse]]:
+    """List platform templates, optionally filtered by category,
+    with limit/offset pagination."""
+    templates = await list_platform_templates(
+        session=session, category=category, limit=limit, offset=offset
+    )
+    return SuccessResponse(
+        message="Platform templates retrieved successfully.",
+        data=[PlatformTemplateResponse.model_validate(t) for t in templates],
+    )
+
+
+@router.get(
+    "/platform-templates/{template_id}",
+    response_model=SuccessResponse[PlatformTemplateResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get a platform template",
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Template not found.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "error",
+                        "message": "Platform template not found.",
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit("30/minute")
+async def get_template(
+    request: Request,
+    session: DBSession,
+    template_id: UUID,
+) -> SuccessResponse[PlatformTemplateResponse]:
+    """Fetch a single platform template by ID."""
+    template = await get_platform_template(session=session, template_id=template_id)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Platform template not found.",
+        )
+    return SuccessResponse(
+        message="Platform template retrieved successfully.",
+        data=PlatformTemplateResponse.model_validate(template),
+    )

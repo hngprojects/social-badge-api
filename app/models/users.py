@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7
+from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from app.models import OrganiserTemplate
     from app.models.auth import AuthProvider, RefreshToken
     from app.models.roles import Role, UserRole
+
+
+def uuid7() -> uuid.UUID:
+    return uuid.UUID(bytes=_uuid7().bytes)
 
 
 class User(Base):

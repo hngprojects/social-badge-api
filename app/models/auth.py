@@ -12,12 +12,16 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7
+from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.users import User
+
+
+def uuid7() -> uuid.UUID:
+    return uuid.UUID(bytes=_uuid7().bytes)
 
 
 class AuthProvider(Base):

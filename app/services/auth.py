@@ -392,7 +392,7 @@ def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> 
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
         max_age=max_age,
-        domain=settings.COOKIE_DOMAIN,
+        domain=settings.COOKIE_DOMAIN or None,
     )
 
 
