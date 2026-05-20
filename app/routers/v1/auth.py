@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -532,6 +540,7 @@ async def forgot_password(
 async def verify_email(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     payload: VerifyEmailRequest,
@@ -587,10 +596,7 @@ async def verify_email(
             detail="Database update failed, please try again",
         ) from None
 
-    try:
-        await send_onboarding_email(user.email)
-    except Exception:
-        logger.exception("Failed to send onboarding email for %s", user.id)
+    background_tasks.add_task(send_onboarding_email, user.email)
 
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, raw_refresh_token)
@@ -647,6 +653,7 @@ async def google_login(request: Request, redis: RedisClient) -> RedirectResponse
 async def google_callback(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     code: str = Query(..., description="Google authorization code"),
@@ -678,12 +685,7 @@ async def google_callback(
     await session.commit()
 
     if is_new_user:
-        try:
-            await send_onboarding_email(user.email)
-        except Exception:
-            logger.exception(
-                "Failed to send onboarding email for new Google user %s", user.id
-            )
+        background_tasks.add_task(send_onboarding_email, user.email)
 
     redirect = RedirectResponse(
         url=f"{settings.FRONTEND_URL}/coming-soon",

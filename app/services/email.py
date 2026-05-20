@@ -60,16 +60,16 @@ def _build_notification_html(
     subject: str,
     message: str,
 ) -> str:
-    full_name = f"{first_name} {last_name}".strip() if last_name else first_name
-    full_name = html.escape(full_name)
-    email = html.escape(email)
+    escaped_full_name = html.escape(f"{first_name} {last_name}".strip() if last_name else first_name)
+    escaped_email = html.escape(email)
+    escaped_subject = html.escape(subject)
     escaped_message = html.escape(message)
     return email_templates.render(
         "notification",
         reference_id=reference_id,
-        full_name=full_name,
-        email=email,
-        subject=html.escape(subject),
+        escaped_full_name=escaped_full_name,
+        escaped_email=escaped_email,
+        escaped_subject=escaped_subject,
         escaped_message=escaped_message,
     )
 

@@ -22,4 +22,11 @@ def render(name: str, **variables: str) -> str:
     variables.setdefault("frontend_url", settings.FRONTEND_URL)
     variables.setdefault("app_domain", settings.APP_DOMAIN)
 
-    return Template(source).safe_substitute(variables)
+    # Ensure frontend_url does not end with a trailing slash to prevent double-slashes
+    if "frontend_url" in variables:
+        variables["frontend_url"] = variables["frontend_url"].rstrip("/")
+
+    try:
+        return Template(source).safe_substitute(variables)
+    except KeyError as exc:
+        raise ValueError(f"Missing email template variable: {exc.args[0]}") from exc

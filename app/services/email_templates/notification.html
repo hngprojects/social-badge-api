@@ -30,7 +30,7 @@
 
   <!-- Preheader -->
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all;">
-    New contact form submission from $full_name. &#8199;&#65279;&#847;
+    New contact form submission from $escaped_full_name. &#8199;&#65279;&#847;
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f5f0" style="background-color:#f5f5f0;">
@@ -132,13 +132,13 @@
                       <strong style="color:#3A3A3A;">Reference ID:</strong> $reference_id
                     </p>
                     <p style="margin:0 0 12px 0; font-size:15px; line-height:24px; color:#555550; font-family:'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;">
-                      <strong style="color:#3A3A3A;">Name:</strong> $full_name
+                      <strong style="color:#3A3A3A;">Name:</strong> $escaped_full_name
                     </p>
                     <p style="margin:0 0 12px 0; font-size:15px; line-height:24px; color:#555550; font-family:'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;">
-                      <strong style="color:#3A3A3A;">Email:</strong> <a href="mailto:$email" style="color:#FF693E; text-decoration:none;">$email</a>
+                      <strong style="color:#3A3A3A;">Email:</strong> <a href="mailto:$escaped_email" style="color:#FF693E; text-decoration:none;">$escaped_email</a>
                     </p>
                     <p style="margin:0 0 12px 0; font-size:15px; line-height:24px; color:#555550; font-family:'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;">
-                      <strong style="color:#3A3A3A;">Topic:</strong> $subject
+                      <strong style="color:#3A3A3A;">Topic:</strong> $escaped_subject
                     </p>
                   </td>
                 </tr>

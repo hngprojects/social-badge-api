@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
 
+    @field_validator("FRONTEND_URL", mode="after")
+    @classmethod
+    def clean_frontend_url(cls, val: str) -> str:
+        return val.rstrip("/")
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, val: Any) -> list[str] | str:
