@@ -9,12 +9,14 @@ from fakeredis import FakeAsyncRedis
 from httpx import AsyncClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import EmailDeliveryError, GoogleOAuthError
 from app.core.security import hash_password, verify_password
-from app.core.token import generate_token, store_password_reset_token
+from app.core.token import generate_token, hash_token, store_password_reset_token
+from app.models.auth import RefreshToken
 from app.models.users import User
 from app.schemas.auth import ResetPasswordRequest
 
@@ -742,7 +744,7 @@ async def test_refresh_token_endpoint_success(
     assert data["message"] == "Token refreshed"
     assert data["data"] is None
 
-    mock_refresh.assert_awaited_once_with(ANY, ANY, "old_refresh_token", None)
+    mock_refresh.assert_awaited_once_with(ANY, ANY, "old_refresh_token", None, ANY)
 
     # Verify cookies were set
     assert settings.REFRESH_COOKIE in response.cookies
@@ -819,3 +821,128 @@ async def test_get_current_user_profile_success(
 async def test_get_current_user_profile_unauthenticated(client: AsyncClient) -> None:
     response = await client.get("/api/v1/auth/me")
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# login — refresh token metadata stored in DB
+# ---------------------------------------------------------------------------
+
+
+async def test_login_stores_refresh_token_family_id_and_metadata(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    verified_login_user: dict[str, str],
+) -> None:
+    response = await client.post(
+        "/api/v1/auth/login",
+        json=verified_login_user,
+        headers={
+            "User-Agent": "LoginTestAgent/1.0",
+            "X-Forwarded-For": "11.22.33.44",
+        },
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == verified_login_user["email"])
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.family_id is not None
+    assert token.user_agent == "LoginTestAgent/1.0"
+    assert token.ip_address == "11.22.33.44"
+    assert token.last_used_at is not None
+
+
+# ---------------------------------------------------------------------------
+# verify_email — refresh token metadata stored in DB
+# ---------------------------------------------------------------------------
+
+
+async def test_verify_email_stores_refresh_token_metadata(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    user = User(
+        first_name="Meta",
+        last_name="Verify",
+        email="meta-verify@example.com",
+        password_hash="hashed",  # noqa: S106
+        is_email_verified=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_token = "meta-verify-token"  # noqa: S105
+    token_hash = hash_token(raw_token)
+    await fake_redis.set(f"verify:{token_hash}", str(user.id))
+
+    response = await client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": raw_token},
+        headers={
+            "User-Agent": "VerifyAgent/2.0",
+            "X-Forwarded-For": "55.66.77.88",
+        },
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.user_id == user.id)
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.family_id is not None
+    assert token.user_agent == "VerifyAgent/2.0"
+    assert token.ip_address == "55.66.77.88"
+    assert token.last_used_at is not None
+
+
+# ---------------------------------------------------------------------------
+# google_callback — refresh token metadata stored in DB
+# ---------------------------------------------------------------------------
+
+
+@patch("app.routers.v1.auth.authenticate_with_google", new_callable=AsyncMock)
+async def test_google_callback_stores_refresh_token_metadata(
+    mock_authenticate: AsyncMock,
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    user = User(
+        id=uuid.uuid4(),
+        first_name="Google",
+        last_name="Meta",
+        email="google-meta@example.com",
+        is_email_verified=True,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    mock_authenticate.return_value = (user, False)
+
+    response = await client.get(
+        "/api/v1/auth/google/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+        headers={
+            "User-Agent": "GoogleAgent/3.0",
+            "X-Forwarded-For": "99.88.77.66",
+        },
+    )
+    assert response.status_code == 307
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.user_id == user.id)
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.family_id is not None
+    assert token.user_agent == "GoogleAgent/3.0"
+    assert token.ip_address == "99.88.77.66"
+    assert token.last_used_at is not None

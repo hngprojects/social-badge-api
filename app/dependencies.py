@@ -79,20 +79,51 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 async def get_current_admin(
     session: DBSession,
-    current_user: CurrentUser,
+    redis: RedisClient,
+    token: Annotated[str | None, Depends(security)],
 ) -> User:
+    _forbidden = HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required",
+    )
+    _unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
+    if not token:
+        raise _forbidden
+    try:
+        payload = await asyncio.to_thread(
+            jwt.decode,
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+    except JWTError:
+        raise _unauthorized from None
+
+    jti = payload.get("jti")
+    if not jti or await is_token_blacklisted(redis, jti):
+        raise _forbidden
+
+    user_id: str | None = payload.get("sub")
+    if user_id is None:
+        raise _forbidden
+
+    user = await session.get(User, user_id)
+    if user is None:
+        raise _forbidden
+
     stmt = (
         select(Role.id)
         .join(UserRole, Role.id == UserRole.role_id)
-        .where(UserRole.user_id == current_user.id, Role.name == "admin")
+        .where(UserRole.user_id == user.id, Role.name == "admin")
     )
     result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return current_user
+        raise _forbidden
+
+    return user
 
 
 CurrentAdmin = Annotated[User, Depends(get_current_admin)]
