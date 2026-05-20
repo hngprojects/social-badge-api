@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "local"
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: str = "http://localhost:3000"
+    APP_DOMAIN: str = "social-badge.hng14.com"
     ALLOWED_ORIGINS: list[str] | str = []
 
     DATABASE_URL: PostgresDsn
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     VERIFICATION_SUBJECT: str = "Verify your Flare Tag account"
     ACCOUNT_LOCK_SUBJECT: str = "Your Flare Tag account has been locked"
     PASSWORD_RESET_SUBJECT: str = "Reset your Flare Tag password"  # noqa: S105
+    ONBOARDING_SUBJECT: str = "Welcome to Flare Tag! Let's ship."
 
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

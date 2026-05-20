@@ -10,6 +10,7 @@ import resend.exceptions
 
 from app.core.config import settings
 from app.core.exceptions import EmailDeliveryError
+from app.services import email_templates
 
 logger = logging.getLogger(__name__)
 
@@ -17,36 +18,36 @@ resend.api_key = settings.RESEND_API_KEY
 
 
 def _build_verification_html(token: str) -> str:
-    return (
-        "<h2>Welcome to Flare Tag</h2>"
-        "<p>Please verify your email address by clicking the link below:</p>"
-        f'<p><a href="{settings.FRONTEND_URL}/verify?token={token}">'
-        "Verify Email</a></p>"
-        "<p>This link expires in 30 minutes.</p>"
+    action_url = f"{settings.FRONTEND_URL}/verify?token={token}"
+    return email_templates.render(
+        "verification",
+        action_url=action_url,
+        expires_minutes=str(settings.VERIFICATION_TOKEN_TTL_MINUTES),
     )
 
 
 def _build_account_lock_html() -> str:
     minutes = settings.LOCKOUT_WINDOW // 60
-    return (
-        "<h2>Your Flare Tag account has been temporarily locked</h2>"
-        "<p>We detected too many failed login attempts on your account.</p>"
-        f"<p>Your account has been locked for {minutes} minutes. "
-        "Please try again after that time.</p>"
-        "<p>If this wasn't you, we recommend changing your password "
-        "once you regain access.</p>"
+    return email_templates.render(
+        "account_lock",
+        minutes=str(minutes),
     )
 
 
 def _build_password_reset_html(token: str) -> str:
-    return (
-        "<h2>Password Reset Request</h2>"
-        "<p>We received a request to reset your Flare Tag password. "
-        "Click the link below to set a new password:</p>"
-        f'<p><a href="{settings.FRONTEND_URL}/reset-password?token={token}">'
-        "Reset Password</a></p>"
-        "<p>This link expires in 30 minutes. If you didn't request a password "
-        "reset, you can safely ignore this email.</p>"
+    action_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    return email_templates.render(
+        "password_reset",
+        action_url=action_url,
+        expires_minutes=str(settings.PASSWORD_RESET_TOKEN_TTL_MINUTES),
+    )
+
+
+def _build_onboarding_html() -> str:
+    action_url = f"{settings.FRONTEND_URL}/dashboard"
+    return email_templates.render(
+        "onboarding",
+        action_url=action_url,
     )
 
 
@@ -63,15 +64,13 @@ def _build_notification_html(
     full_name = html.escape(full_name)
     email = html.escape(email)
     escaped_message = html.escape(message)
-    return (
-        f"<h2>New Contact Form Submission</h2>"
-        f"<p><strong>Reference ID:</strong> {reference_id}</p>"
-        f"<p><strong>Name:</strong> {full_name}</p>"
-        f"<p><strong>Email:</strong> <a href='mailto:{email}'>{email}</a></p>"
-        f"<p><strong>Topic:</strong> {subject}</p>"
-        f"<hr />"
-        f"<p><strong>Message:</strong></p>"
-        f"<p>{escaped_message}</p>"
+    return email_templates.render(
+        "notification",
+        reference_id=reference_id,
+        full_name=full_name,
+        email=email,
+        subject=html.escape(subject),
+        escaped_message=escaped_message,
     )
 
 
@@ -82,30 +81,18 @@ def _build_confirmation_html(
 ) -> str:
     """HTML confirmation email sent to the person who submitted the contact form."""
     safe_name = html.escape(first_name)
-    return (
-        f"<h2>Thanks for reaching out, {safe_name}!</h2>"
-        f"<p>We've received your message and will get back to you "
-        f"within one business day.</p>"
-        f"<p><strong>Your reference ID:</strong> {reference_id}</p>"
-        f"<p>If you need to follow up, just reply to this email and "
-        f"include your reference ID.</p>"
-        f"<p>— The Flare Tag Team</p>"
+    return email_templates.render(
+        "confirmation",
+        safe_name=safe_name,
+        reference_id=reference_id,
     )
 
 
 def _build_security_alert_html(detected_at: datetime) -> str:
-    formatted = detected_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-    return (
-        "<h2>Security alert from Flare Tag</h2>"
-        "<p>We detected suspicious activity on your account. "
-        "A previously-used session token was presented again, "
-        "which may indicate that your session was stolen.</p>"
-        f"<p><strong>Time of detected reuse:</strong> {formatted}</p>"
-        "<p>As a precaution, we have terminated all active sessions on your account. "
-        "You will need to log in again on all your devices.</p>"
-        "<p>If you did not initiate this activity, we strongly recommend "
-        "changing your password immediately.</p>"
-        "<p>— The Flare Tag Security Team</p>"
+    formatted_time = detected_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return email_templates.render(
+        "security_alert",
+        formatted_time=formatted_time,
     )
 
 
@@ -211,6 +198,30 @@ async def send_password_reset_email(to: str, token: str) -> None:
         raise EmailDeliveryError(
             f"Failed to send password reset email to {to}"
         ) from exc
+
+
+async def send_onboarding_email(to: str) -> None:
+    params: resend.Emails.SendParams = {
+        "from": settings.RESEND_FROM_EMAIL,
+        "to": [to],
+        "subject": settings.ONBOARDING_SUBJECT,
+        "html": _build_onboarding_html(),
+    }
+
+    try:
+        await asyncio.to_thread(resend.Emails.send, params)
+    except resend.exceptions.ResendError:
+        logger.warning(
+            "Resend failed for onboarding email to %s, trying SMTP fallback", to
+        )
+        await _send_smtp_email(
+            to=to,
+            subject=settings.ONBOARDING_SUBJECT,
+            html_content=params["html"],
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error sending onboarding email to %s", to)
+        raise EmailDeliveryError(f"Failed to send onboarding email to {to}") from exc
 
 
 async def send_security_alert_email(to: str, detected_at: datetime) -> None:

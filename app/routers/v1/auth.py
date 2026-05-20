@@ -59,6 +59,7 @@ from app.services.auth import (
     signin,
     signup,
 )
+from app.services.email import send_onboarding_email
 
 logger = logging.getLogger(__name__)
 
@@ -586,6 +587,11 @@ async def verify_email(
             detail="Database update failed, please try again",
         ) from None
 
+    try:
+        await send_onboarding_email(user.email)
+    except Exception:
+        logger.exception("Failed to send onboarding email for %s", user.id)
+
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, raw_refresh_token)
 
@@ -647,7 +653,7 @@ async def google_callback(
     state: str = Query(..., description="OAuth state used to prevent CSRF"),
 ) -> RedirectResponse:
     try:
-        user, _ = await authenticate_with_google(session, redis, code, state)
+        user, is_new_user = await authenticate_with_google(session, redis, code, state)
     except GoogleOAuthError as exc:
         error_query = urlencode({"error": exc.message})
         return RedirectResponse(
@@ -670,6 +676,14 @@ async def google_callback(
     )
     session.add(refresh_token)
     await session.commit()
+
+    if is_new_user:
+        try:
+            await send_onboarding_email(user.email)
+        except Exception:
+            logger.exception(
+                "Failed to send onboarding email for new Google user %s", user.id
+            )
 
     redirect = RedirectResponse(
         url=f"{settings.FRONTEND_URL}/coming-soon",
