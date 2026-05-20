@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class CreateTemplateInstanceRequest(BaseModel):
@@ -126,6 +126,55 @@ class PlatformTemplateResponse(BaseModel):
     created_at: datetime | None = Field(
         None, description="When the template was created."
     )
+
+
+class OrganiserTemplateSummary(BaseModel):
+    """Per-item shape for the organiser's template dashboard list.
+
+    canvas_data is intentionally excluded — it is large and not needed
+    for rendering a dashboard card.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID = Field(..., description="Unique identifier for the template instance.")
+    title: str = Field(..., description="Template title set by the organiser.")
+    platform_template_id: UUID = Field(
+        ..., description="The platform template this instance is based on."
+    )
+    thumbnail_url: str | None = Field(
+        None, description="Preview image URL for the dashboard card."
+    )
+    is_published: bool = Field(
+        ..., description="Whether the template is currently published."
+    )
+    share_slug: str | None = Field(
+        None,
+        description="Public share slug, present once the template has been published.",
+    )
+    published_at: datetime | None = Field(
+        None, description="When the template was last published."
+    )
+    created_at: datetime | None = Field(
+        None, description="When the template instance was created."
+    )
+    updated_at: datetime | None = Field(
+        None, description="When the template was last modified."
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> str:
+        return "published" if self.is_published else "draft"
+
+
+class OrganiserTemplateListResponse(BaseModel):
+    templates: list[OrganiserTemplateSummary]
+    total: int = Field(..., description="Total templates matching the filter.")
+    page: int = Field(..., description="Current page number.")
+    limit: int = Field(..., description="Items per page.")
+    prev: str | None = Field(None, description="Relative URL to the previous page.")
+    next: str | None = Field(None, description="Relative URL to the next page.")
 
 
 class PlatformTemplateListResponse(BaseModel):

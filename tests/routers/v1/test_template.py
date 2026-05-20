@@ -1122,3 +1122,354 @@ async def test_duplicate_published_template_copy_is_draft(
     assert response.status_code == 201
     data = response.json()["data"]
     assert data["is_published"] is False
+
+
+@pytest.fixture
+async def organiser_templates_set(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> list[OrganiserTemplate]:
+    """Three templates: two drafts, one published."""
+    from datetime import UTC, datetime
+
+    draft_a = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Alpha",
+        canvas_data={"layout_id": "v1"},
+        is_published=False,
+    )
+    draft_b = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Beta",
+        canvas_data={"layout_id": "v1"},
+        is_published=False,
+    )
+    published = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Published Gamma",
+        canvas_data={"layout_id": "v1"},
+        is_published=True,
+        share_slug="gamma-slug-01",
+        published_at=datetime.now(UTC),
+    )
+    for t in [draft_a, draft_b, published]:
+        db_session.add(t)
+
+    await db_session.commit()
+    for t in [draft_a, draft_b, published]:
+        await db_session.refresh(t)
+
+    return [draft_a, draft_b, published]
+
+
+async def test_list_instances_success(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template instances retrieved successfully."
+    assert data["data"]["total"] == 3
+    assert len(data["data"]["templates"]) == 3
+
+
+async def test_list_instances_response_shape(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    item = response.json()["data"]["templates"][0]
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "thumbnail_url",
+        "is_published",
+        "status",
+        "share_slug",
+        "published_at",
+        "created_at",
+        "updated_at",
+    }
+    assert expected_keys == set(item.keys())
+
+
+async def test_list_instances_status_field_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    items = response.json()["data"]["templates"]
+    draft_items = [t for t in items if not t["is_published"]]
+    assert all(t["status"] == "draft" for t in draft_items)
+
+
+async def test_list_instances_status_field_published(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    items = response.json()["data"]["templates"]
+    published_items = [t for t in items if t["is_published"]]
+    assert all(t["status"] == "published" for t in published_items)
+
+
+async def test_list_instances_canvas_data_not_exposed(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    """canvas_data must not appear in the list response — it is large and unused."""
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    for item in response.json()["data"]["templates"]:
+        assert "canvas_data" not in item
+
+
+async def test_list_instances_empty_when_no_templates(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["templates"] == []
+    assert data["total"] == 0
+    assert data["prev"] is None
+    assert data["next"] is None
+
+
+async def test_list_instances_unauthenticated(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/templates/organizer/instances")
+
+    assert response.status_code in (401, 403)
+
+
+async def test_list_instances_excludes_soft_deleted(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    live = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Live Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Deleted Template",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(live)
+    db_session.add(deleted)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["total"] == 1
+    assert data["templates"][0]["title"] == "Live Template"
+
+
+async def test_list_instances_only_returns_current_users_templates(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+
+    other = User(
+        first_name="Other",
+        last_name="Organiser",
+        email="other-list-router@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    mine = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="My Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    theirs = OrganiserTemplate(
+        organiser_id=other.id,
+        platform_template_id=platform_template.id,
+        title="Their Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(mine)
+    db_session.add(theirs)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["total"] == 1
+    assert data["templates"][0]["title"] == "My Template"
+
+
+async def test_list_instances_pagination_prev_next_links(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(5):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["page"] == 2
+    assert data["limit"] == 2
+    assert data["total"] == 5
+    assert len(data["templates"]) == 2
+    assert "page=1" in data["prev"]
+    assert "page=3" in data["next"]
+
+
+async def test_list_instances_first_page_has_no_prev(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(3):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=1&limit=2",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["prev"] is None
+    assert data["next"] is not None
+
+
+async def test_list_instances_last_page_has_no_next(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(3):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["next"] is None
+    assert data["prev"] is not None
+
+
+async def test_list_instances_invalid_page_param(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=0",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_list_instances_limit_exceeds_maximum(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?limit=101",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 422
