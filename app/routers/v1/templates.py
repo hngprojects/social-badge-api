@@ -19,6 +19,7 @@ from app.dependencies import CurrentUser, DBSession
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.schemas.template import (
     CreateTemplateInstanceRequest,
+    DuplicateTemplateResponse,
     LogoUploadResponse,
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
@@ -28,6 +29,7 @@ from app.schemas.template import (
 )
 from app.services.template import (
     create_template_instance,
+    duplicate_template,
     get_platform_template,
     get_public_template_by_slug,
     list_platform_templates,
@@ -219,6 +221,56 @@ async def unpublish(
     return SuccessResponse(
         message="Template unpublished successfully.",
         data=PublishedTemplateResponse.model_validate(template),
+    )
+
+
+@router.post(
+    "/organizer/{template_id}/duplicate",
+    response_model=SuccessResponse[DuplicateTemplateResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Duplicate an organiser template",
+    description=(
+        "Creates a draft copy of the organiser's template. "
+        "The copy receives a new unique ID, inherits all configuration "
+        "fields and hashtags from the original, and starts in an unpublished state. "
+        "The original template is not modified."
+    ),
+    responses={
+        201: {"description": "Draft copy created."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the template owner."},
+        404: {"model": ErrorResponse, "description": "Template not found."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("30/minute")
+async def duplicate(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    template_id: UUID,
+) -> SuccessResponse[DuplicateTemplateResponse]:
+    """Duplicate an organiser template into a new draft."""
+    try:
+        copy = await duplicate_template(
+            session=session,
+            organiser_id=current_user.id,
+            template_id=template_id,
+        )
+    except OrganiserTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+    except NotTemplateOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this template.",
+        ) from exc
+
+    return SuccessResponse(
+        message="Template duplicated successfully.",
+        data=DuplicateTemplateResponse.model_validate(copy),
     )
 
 

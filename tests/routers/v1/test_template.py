@@ -895,3 +895,228 @@ async def test_get_platform_template_not_found(
     data = response.json()
     assert data["status"] == "error"
     assert data["message"] == "Platform template not found."
+
+
+@pytest.fixture
+async def source_for_duplicate(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Organiser template with hashtags, used as the duplication source."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Source Event",
+        canvas_data={"layout_id": "photo_gradient_v1", "accent": "#3498DB"},
+        default_caption="Attending Source Event!",
+        destination_link="https://source.example.com",
+        logo_url="https://cdn.example.com/logo.png",
+        logo_public_id="template-logos/logo-src",
+        access_type=0,
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#SourceEvent", "#Tech"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_duplicate_template_success(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    source_for_duplicate: OrganiserTemplate,
+    test_user: User,
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template duplicated successfully."
+    assert data["data"]["id"] != str(source_for_duplicate.id)
+    assert data["data"]["title"] == "Source Event (Copy)"
+    assert data["data"]["organiser_id"] == str(test_user.id)
+    assert data["data"]["platform_template_id"] == str(
+        source_for_duplicate.platform_template_id
+    )
+    assert data["data"]["is_published"] is False
+    assert data["data"]["created_at"] is not None
+
+
+async def test_duplicate_template_copy_is_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    """The response must never carry a slug or published state."""
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["is_published"] is False
+
+
+async def test_duplicate_template_original_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    await db_session.refresh(source_for_duplicate)
+    assert source_for_duplicate.title == "Source Event"
+
+
+async def test_duplicate_template_unauthenticated(
+    client: AsyncClient,
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_duplicate_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Template not found."
+
+
+async def test_duplicate_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="dup-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owner Only Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="dup-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    other_token = create_access_token(other.id)
+    response = await client.post(
+        f"/api/v1/templates/organizer/{template.id}/duplicate",
+        cookies={settings.ACCESS_COOKIE: other_token},
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "You do not own this template."
+
+
+async def test_duplicate_soft_deleted_template_returns_404(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Gone Event",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(deleted)
+    await db_session.commit()
+    await db_session.refresh(deleted)
+
+    response = await client.post(
+        f"/api/v1/templates/organizer/{deleted.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_duplicate_published_template_copy_is_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    published = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Live Event",
+        canvas_data={"layout_id": "v1"},
+        is_published=True,
+        share_slug="live-slug-001",
+        published_at=datetime.now(UTC),
+    )
+    db_session.add(published)
+    await db_session.commit()
+    await db_session.refresh(published)
+
+    response = await client.post(
+        f"/api/v1/templates/organizer/{published.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["is_published"] is False
