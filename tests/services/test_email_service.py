@@ -126,3 +126,10 @@ async def test_security_alert_email_raises_on_unexpected_exception(
 
     with pytest.raises(EmailDeliveryError):
         await send_security_alert_email("user@example.com", detected_at)
+
+
+def test_email_template_renders_without_double_slashes() -> None:
+    from app.services import email_templates
+    html = email_templates.render("verification", action_url="http://localhost:3000/verify", expires_minutes="30", frontend_url="https://flaretag.com/")
+    assert "https://flaretag.com/privacy" in html
+    assert "https://flaretag.com//privacy" not in html

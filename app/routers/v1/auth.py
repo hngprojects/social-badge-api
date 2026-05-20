@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -59,6 +67,7 @@ from app.services.auth import (
     signin,
     signup,
 )
+from app.services.email import send_onboarding_email
 
 logger = logging.getLogger(__name__)
 
@@ -531,6 +540,7 @@ async def forgot_password(
 async def verify_email(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     payload: VerifyEmailRequest,
@@ -585,6 +595,8 @@ async def verify_email(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database update failed, please try again",
         ) from None
+
+    background_tasks.add_task(send_onboarding_email, user.email)
 
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, raw_refresh_token)
@@ -641,13 +653,14 @@ async def google_login(request: Request, redis: RedisClient) -> RedirectResponse
 async def google_callback(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     code: str = Query(..., description="Google authorization code"),
     state: str = Query(..., description="OAuth state used to prevent CSRF"),
 ) -> RedirectResponse:
     try:
-        user, _ = await authenticate_with_google(session, redis, code, state)
+        user, is_new_user = await authenticate_with_google(session, redis, code, state)
     except GoogleOAuthError as exc:
         error_query = urlencode({"error": exc.message})
         return RedirectResponse(
@@ -670,6 +683,9 @@ async def google_callback(
     )
     session.add(refresh_token)
     await session.commit()
+
+    if is_new_user:
+        background_tasks.add_task(send_onboarding_email, user.email)
 
     redirect = RedirectResponse(
         url=f"{settings.FRONTEND_URL}/coming-soon",
