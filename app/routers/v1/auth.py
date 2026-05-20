@@ -1,8 +1,18 @@
 import logging
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -18,6 +28,7 @@ from app.core.exceptions import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
 )
+from app.core.ip import get_client_ip
 from app.core.rate_limit import limiter
 from app.core.token import (
     create_access_token,
@@ -31,26 +42,32 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
+    LogoutAllResponse,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SessionListResponse,
     SignupRequest,
     UserResponse,
     VerifyEmailRequest,
 )
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.services.auth import (
+    _resolve_current_family_id,
     authenticate_with_google,
     build_google_auth_url,
+    list_user_sessions,
     logout_session,
     refresh_session,
     request_password_reset,
     resend_verification_email,
     reset_password,
+    revoke_all_user_sessions,
     set_access_cookie,
     set_refresh_cookie,
     signin,
     signup,
 )
+from app.services.email import send_onboarding_email
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +334,9 @@ async def login(
     response: Response,
 ) -> SuccessResponse[LoginResponse]:
     try:
-        user, access_token, refresh_token = await signin(session, redis, payload)
+        user, access_token, refresh_token = await signin(
+            session, redis, payload, request
+        )
 
     except EmailNotVerifiedError as unverified_exc:
         raise HTTPException(
@@ -395,7 +414,7 @@ async def refresh(
 
     try:
         new_access, new_refresh = await refresh_session(
-            session, redis, refresh_token, access_token
+            session, redis, refresh_token, access_token, request
         )
     except InvalidRefreshTokenError as exc:
         raise HTTPException(
@@ -521,6 +540,7 @@ async def forgot_password(
 async def verify_email(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     payload: VerifyEmailRequest,
@@ -555,10 +575,15 @@ async def verify_email(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] or None),
+        ip_address=get_client_ip(request),
+        last_used_at=now,
     )
     session.add(refresh_token)
 
@@ -570,6 +595,8 @@ async def verify_email(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database update failed, please try again",
         ) from None
+
+    background_tasks.add_task(send_onboarding_email, user.email)
 
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, raw_refresh_token)
@@ -626,13 +653,14 @@ async def google_login(request: Request, redis: RedisClient) -> RedirectResponse
 async def google_callback(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     session: DBSession,
     redis: RedisClient,
     code: str = Query(..., description="Google authorization code"),
     state: str = Query(..., description="OAuth state used to prevent CSRF"),
 ) -> RedirectResponse:
     try:
-        user, _ = await authenticate_with_google(session, redis, code, state)
+        user, is_new_user = await authenticate_with_google(session, redis, code, state)
     except GoogleOAuthError as exc:
         error_query = urlencode({"error": exc.message})
         return RedirectResponse(
@@ -643,13 +671,21 @@ async def google_callback(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] or None),
+        ip_address=get_client_ip(request),
+        last_used_at=now,
     )
     session.add(refresh_token)
     await session.commit()
+
+    if is_new_user:
+        background_tasks.add_task(send_onboarding_email, user.email)
 
     redirect = RedirectResponse(
         url=f"{settings.FRONTEND_URL}/coming-soon",
@@ -660,3 +696,97 @@ async def google_callback(
     set_refresh_cookie(redirect, raw_refresh_token)
 
     return redirect
+
+
+@router.get(
+    "/sessions",
+    response_model=SuccessResponse[SessionListResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List active sessions",
+    description=(
+        "Returns all active (non-revoked, non-expired) sessions for the "
+        "current user. The is_current field identifies the session "
+        "associated with the refresh token cookie on this request."
+    ),
+    responses={
+        200: {"description": "Active sessions retrieved."},
+        401: {"model": ErrorResponse, "description": "Not authenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("10/minute")
+async def list_sessions(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> SuccessResponse[SessionListResponse]:
+    """Return paginated active sessions for the authenticated user."""
+    raw_refresh = request.cookies.get(settings.REFRESH_COOKIE)
+    current_family_id = await _resolve_current_family_id(session, raw_refresh)
+
+    data = await list_user_sessions(
+        session=session,
+        user_id=current_user.id,
+        current_family_id=current_family_id,
+        page=page,
+        limit=limit,
+    )
+
+    return SuccessResponse(
+        message="Active sessions retrieved.",
+        data=data,
+    )
+
+
+@router.post(
+    "/logout/all",
+    response_model=SuccessResponse[LogoutAllResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Logout all sessions",
+    description=(
+        "Revokes every active session for the current user across all devices. "
+        "Also blacklists the current access token."
+    ),
+    responses={
+        200: {"description": "All sessions terminated."},
+        401: {"model": ErrorResponse, "description": "Not authenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("5/minute")
+async def logout_all(
+    request: Request,
+    response: Response,
+    session: DBSession,
+    redis: RedisClient,
+    current_user: CurrentUser,
+) -> SuccessResponse[LogoutAllResponse]:
+    """Revoke all sessions for the current user."""
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
+
+    count = await revoke_all_user_sessions(
+        session=session,
+        redis=redis,
+        user_id=current_user.id,
+        access_token=access_token,
+    )
+
+    response.delete_cookie(
+        key=settings.REFRESH_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        key=settings.ACCESS_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+
+    return SuccessResponse(
+        message="All sessions have been terminated.",
+        data=LogoutAllResponse(sessions_revoked=count),
+    )

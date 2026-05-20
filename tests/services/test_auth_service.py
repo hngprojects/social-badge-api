@@ -18,8 +18,11 @@ from app.core.exceptions import (
 )
 from app.core.security import hash_password, verify_password
 from app.core.token import (
+    create_refresh_token,
     generate_token,
     get_password_reset_user_id,
+    hash_token,
+    store_google_exchange_code,
     store_google_oauth_state,
     store_password_reset_token,
 )
@@ -35,11 +38,14 @@ from app.services.auth import (
     _exchange_google_code,
     _extract_google_id_token_subject,
     _fetch_google_user_info,
+    _send_security_alert_best_effort,
     _validate_google_subject_consistency,
     authenticate_with_google,
     build_google_auth_url,
     check_lockout,
+    exchange_google_code_for_tokens,
     increment_failed_attempts,
+    refresh_session,
     request_password_reset,
     reset_attempts,
     reset_password,
@@ -1089,3 +1095,299 @@ async def test_fetch_google_user_info_maps_transport_error() -> None:
             await _fetch_google_user_info("bad-token")
 
     assert exc.value.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# signin() — metadata population
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_request(
+    ua: str = "TestAgent/1.0",
+    ip: str = "1.2.3.4",
+) -> MagicMock:
+    req = MagicMock()
+    req.headers = {"user-agent": ua}
+    req.client = MagicMock()
+    req.client.host = ip
+    return req
+
+
+async def test_signin_stores_family_id_on_refresh_token(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "fam@example.com")
+
+    await signin(db_session, fake_redis, _login("fam@example.com"))
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "fam@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.family_id is not None
+
+
+async def test_signin_stores_user_agent_from_request(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "ua@example.com")
+    req = _make_mock_request(ua="MyBrowser/3.0")
+
+    await signin(db_session, fake_redis, _login("ua@example.com"), request=req)
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "ua@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.user_agent == "MyBrowser/3.0"
+
+
+async def test_signin_stores_ip_address_from_request(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "ip@example.com")
+    req = _make_mock_request(ip="5.6.7.8")
+
+    await signin(db_session, fake_redis, _login("ip@example.com"), request=req)
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "ip@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.ip_address == "5.6.7.8"
+
+
+async def test_signin_stores_last_used_at(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "lastused@example.com")
+
+    await signin(db_session, fake_redis, _login("lastused@example.com"))
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "lastused@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.last_used_at is not None
+
+
+async def test_signin_without_request_stores_null_ip_and_user_agent(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "noreq@example.com")
+
+    await signin(db_session, fake_redis, _login("noreq@example.com"), request=None)
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "noreq@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.user_agent is None
+    assert token.ip_address is None
+
+
+async def test_signin_truncates_user_agent_to_1000_chars(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    await _create_verified_user(db_session, "truncate@example.com")
+    long_ua = "A" * 1500
+    req = _make_mock_request(ua=long_ua)
+
+    await signin(db_session, fake_redis, _login("truncate@example.com"), request=req)
+
+    result = await db_session.execute(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(User.email == "truncate@example.com")
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.user_agent is not None
+    assert len(token.user_agent) == 1000
+
+
+# ---------------------------------------------------------------------------
+# refresh_session() — metadata propagation on rotation
+# ---------------------------------------------------------------------------
+
+
+async def _create_refresh_token_for_user(
+    session: AsyncSession,
+    user: User,
+    user_agent: str = "OldAgent/1.0",
+    ip: str = "9.8.7.6",
+) -> str:
+    from datetime import UTC, datetime
+
+    raw, expire = create_refresh_token(user.id)
+    import uuid
+
+    tok = RefreshToken(
+        user_id=user.id,
+        token_hash=hash_token(raw),
+        expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=user_agent,
+        ip_address=ip,
+        last_used_at=datetime.now(UTC),
+    )
+    session.add(tok)
+    await session.commit()
+    return raw
+
+
+async def test_refresh_session_new_token_gets_metadata_from_request(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    user = await _create_verified_user(db_session, "rot-req@example.com")
+    raw = await _create_refresh_token_for_user(db_session, user)
+
+    req = _make_mock_request(ua="NewAgent/2.0", ip="5.6.7.8")
+    _, new_raw = await refresh_session(db_session, fake_redis, raw, None, request=req)
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(new_raw))
+    )
+    new_tok = result.scalars().first()
+    assert new_tok is not None
+    assert new_tok.user_agent == "NewAgent/2.0"
+    assert new_tok.ip_address == "5.6.7.8"
+    assert new_tok.last_used_at is not None
+
+
+async def test_refresh_session_new_token_inherits_old_metadata_when_no_request(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    user = await _create_verified_user(db_session, "rot-noreq@example.com")
+    raw = await _create_refresh_token_for_user(
+        db_session, user, user_agent="OldAgent/1.0", ip="9.8.7.6"
+    )
+
+    _, new_raw = await refresh_session(db_session, fake_redis, raw, None, request=None)
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(new_raw))
+    )
+    new_tok = result.scalars().first()
+    assert new_tok is not None
+    assert new_tok.user_agent == "OldAgent/1.0"
+    assert new_tok.ip_address == "9.8.7.6"
+
+
+# ---------------------------------------------------------------------------
+# _send_security_alert_best_effort tests
+# ---------------------------------------------------------------------------
+
+
+async def test_send_security_alert_best_effort_swallows_exceptions() -> None:
+    from datetime import UTC, datetime
+
+    with patch(
+        "app.services.auth.send_security_alert_email",
+        new_callable=AsyncMock,
+        side_effect=Exception("SMTP down"),
+    ):
+        # Must not raise
+        await _send_security_alert_best_effort("victim@example.com", datetime.now(UTC))
+
+
+async def test_send_security_alert_best_effort_calls_send_email() -> None:
+    from datetime import UTC, datetime
+
+    detected_at = datetime.now(UTC)
+    with patch(
+        "app.services.auth.send_security_alert_email", new_callable=AsyncMock
+    ) as mock_alert:
+        await _send_security_alert_best_effort("user@example.com", detected_at)
+        mock_alert.assert_awaited_once_with("user@example.com", detected_at)
+
+
+# ---------------------------------------------------------------------------
+# exchange_google_code_for_tokens() — metadata population
+# ---------------------------------------------------------------------------
+
+
+async def test_exchange_google_code_for_tokens_populates_metadata(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    user = User(
+        first_name="Exchange",
+        last_name="User",
+        email="exchange-meta@example.com",
+        is_email_verified=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_code = "test-exchange-code-meta"
+    await store_google_exchange_code(fake_redis, hash_token(raw_code), str(user.id))
+
+    req = _make_mock_request(ua="ExchangeAgent/1.0", ip="4.3.2.1")
+    _, _, raw_refresh = await exchange_google_code_for_tokens(
+        db_session, fake_redis, raw_code, request=req
+    )
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_refresh))
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.family_id is not None
+    assert token.user_agent == "ExchangeAgent/1.0"
+    assert token.ip_address == "4.3.2.1"
+    assert token.last_used_at is not None
+
+
+async def test_exchange_google_code_for_tokens_without_request_stores_nulls(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    user = User(
+        first_name="Exchange",
+        last_name="NoReq",
+        email="exchange-noreq@example.com",
+        is_email_verified=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_code = "test-exchange-code-noreq"
+    await store_google_exchange_code(fake_redis, hash_token(raw_code), str(user.id))
+
+    _, _, raw_refresh = await exchange_google_code_for_tokens(
+        db_session, fake_redis, raw_code, request=None
+    )
+
+    result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_refresh))
+    )
+    token = result.scalars().first()
+    assert token is not None
+    assert token.user_agent is None
+    assert token.ip_address is None

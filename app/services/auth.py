@@ -3,15 +3,16 @@ import base64
 import binascii
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
-from fastapi import Response
+from fastapi import Request, Response
 from jose import JWTError, jwt
 from redis.asyncio import Redis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,7 @@ from app.core.exceptions import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
 )
+from app.core.ip import get_client_ip, mask_ip
 from app.core.security import hash_password, verify_password
 from app.core.token import (
     blacklist_token,
@@ -48,11 +50,14 @@ from app.schemas.auth import (
     LoginRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SessionListResponse,
+    SessionResponse,
     SignupRequest,
 )
 from app.services.email import (
     send_account_lock_email,
     send_password_reset_email,
+    send_security_alert_email,
     send_verification_email,
 )
 
@@ -166,6 +171,7 @@ async def signin(
     session: AsyncSession,
     redis: Redis,
     payload: LoginRequest,
+    request: Request | None = None,
 ) -> tuple[User, str, str]:
     await check_lockout(redis, payload.email)
 
@@ -204,10 +210,19 @@ async def signin(
     access_token = create_access_token(existing_user.id)
     raw_refresh_token, expire = create_refresh_token(existing_user.id)
 
+    family_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
     refresh_token = RefreshToken(
         user_id=existing_user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=family_id,
+        user_agent=(
+            (request.headers.get("user-agent", "")[:1000] or None) if request else None
+        ),
+        ip_address=get_client_ip(request) if request else None,
+        last_used_at=now,
     )
     session.add(refresh_token)
 
@@ -242,52 +257,110 @@ async def _blacklist_access_token_if_valid(
         await blacklist_token(redis, jti, remaining)
 
 
+async def _send_security_alert_best_effort(email: str, detected_at: datetime) -> None:
+    try:
+        await send_security_alert_email(email, detected_at)
+    except Exception:
+        logger.exception(
+            "Security alert failed to deliver to %s — revocation complete",
+            email,
+        )
+
+
 async def refresh_session(
     session: AsyncSession,
     redis: Redis,
     raw_refresh_token: str,
     access_token: str | None,
+    request: Request | None = None,
 ) -> tuple[str, str]:
     token_hash_str = await asyncio.to_thread(hash_token, raw_refresh_token)
 
     result = await session.execute(
         select(RefreshToken).where(RefreshToken.token_hash == token_hash_str)
     )
-    refresh_token_obj = result.scalars().first()
+    token_obj = result.scalars().first()
 
-    if not refresh_token_obj:
+    if not token_obj:
         raise InvalidRefreshTokenError
 
-    if refresh_token_obj.is_revoked:
+    now = datetime.now(UTC)
+
+    if token_obj.is_revoked:
+        if token_obj.last_used_at is not None:
+            last_used = token_obj.last_used_at
+            if last_used.tzinfo is None:
+                last_used = last_used.replace(tzinfo=UTC)
+            delta = (now - last_used).total_seconds()
+            if delta <= settings.REFRESH_REUSE_GRACE_SECONDS:
+                raise InvalidRefreshTokenError
+
+        update_result = await session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.family_id == token_obj.family_id,
+                RefreshToken.is_revoked.is_(False),
+            )
+            .values(is_revoked=True)
+        )
+        await session.commit()
+
+        if getattr(update_result, "rowcount", 0) > 0:
+            user = await session.get(User, token_obj.user_id)
+            if user:
+                asyncio.create_task(_send_security_alert_best_effort(user.email, now))
+
+        logger.warning(
+            "refresh_token.reuse_detected",
+            extra={
+                "user_id": str(token_obj.user_id),
+                "family_id": str(token_obj.family_id),
+            },
+        )
         raise InvalidRefreshTokenError
 
-    # Ensure timezone awareness for comparison
-    expires_at = refresh_token_obj.expires_at
+    expires_at = token_obj.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
 
-    if expires_at < datetime.now(UTC):
+    if expires_at < now:
         raise InvalidRefreshTokenError
 
-    user = await session.get(User, refresh_token_obj.user_id)
+    user = await session.get(User, token_obj.user_id)
     if not user:
         raise InvalidRefreshTokenError
 
     await _blacklist_access_token_if_valid(redis, access_token)
 
+    token_obj.is_revoked = True
+    token_obj.last_used_at = now
+
     new_raw_refresh, new_expire = create_refresh_token(user.id)
-    new_refresh_obj = RefreshToken(
+    new_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(new_raw_refresh),
         expires_at=new_expire,
+        family_id=token_obj.family_id,
+        user_agent=(
+            request.headers.get("user-agent", "")[:1000]
+            if request
+            else token_obj.user_agent
+        ),
+        ip_address=(get_client_ip(request) if request else token_obj.ip_address),
+        last_used_at=now,
     )
-    session.add(new_refresh_obj)
-
-    refresh_token_obj.is_revoked = True
+    session.add(new_token)
 
     new_access_token = create_access_token(user.id)
-
     await session.commit()
+
+    logger.info(
+        "refresh_token.rotated",
+        extra={
+            "user_id": str(user.id),
+            "family_id": str(token_obj.family_id),
+        },
+    )
 
     return new_access_token, new_raw_refresh
 
@@ -319,7 +392,7 @@ def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> 
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
         max_age=max_age,
-        domain=settings.COOKIE_DOMAIN,
+        domain=settings.COOKIE_DOMAIN or None,
     )
 
 
@@ -657,6 +730,7 @@ async def exchange_google_code_for_tokens(
     session: AsyncSession,
     redis: Redis,
     code: str,
+    request: Request | None = None,
 ) -> tuple[User, str, str]:
     code_hash = hash_token(code)
     user_id_str = await get_google_exchange_user_id(redis, code_hash)
@@ -671,12 +745,127 @@ async def exchange_google_code_for_tokens(
     access_token = create_access_token(user.id)
     raw_refresh_token, expire = create_refresh_token(user.id)
 
+    now = datetime.now(UTC)
     refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_refresh_token),
         expires_at=expire,
+        family_id=uuid.uuid4(),
+        user_agent=(request.headers.get("user-agent", "")[:1000] if request else None),
+        ip_address=(get_client_ip(request) if request else None),
+        last_used_at=now,
     )
     session.add(refresh_token)
     await session.commit()
 
     return user, access_token, raw_refresh_token
+
+
+async def list_user_sessions(
+    session: AsyncSession,
+    user_id: UUID,
+    current_family_id: UUID | None,
+    page: int = 1,
+    limit: int = 20,
+) -> SessionListResponse:
+    """Return non-revoked, non-expired refresh token records for this user."""
+    now = datetime.now(UTC)
+
+    count_stmt = select(func.count(RefreshToken.id)).where(
+        RefreshToken.user_id == user_id,
+        RefreshToken.is_revoked.is_(False),
+        RefreshToken.expires_at > now,
+    )
+    count_result = await session.execute(count_stmt)
+    total = count_result.scalar_one()
+
+    stmt = (
+        select(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > now,
+        )
+        .order_by(RefreshToken.last_used_at.desc().nulls_last())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+
+    sessions = [
+        SessionResponse(
+            session_id=row.id,
+            user_agent=row.user_agent,
+            ip_address=mask_ip(row.ip_address),
+            created_at=row.created_at,
+            last_used_at=row.last_used_at,
+            expires_at=row.expires_at,
+            is_current=(
+                row.family_id == current_family_id
+                if current_family_id is not None
+                else False
+            ),
+        )
+        for row in rows
+    ]
+
+    return SessionListResponse(
+        sessions=sessions,
+        total=total,
+        page=page,
+        limit=limit,
+    )
+
+
+async def _resolve_current_family_id(
+    session: AsyncSession,
+    raw_refresh_token: str | None,
+) -> UUID | None:
+    """Look up the family_id for the current refresh cookie, if present."""
+    if not raw_refresh_token:
+        return None
+    token_hash_str = await asyncio.to_thread(hash_token, raw_refresh_token)
+    now = datetime.now(UTC)
+    result = await session.execute(
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash_str,
+            RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > now,
+        )
+    )
+    row = result.scalars().first()
+    return row.family_id if row else None
+
+
+async def revoke_all_user_sessions(
+    session: AsyncSession,
+    redis: Redis,
+    user_id: UUID,
+    access_token: str | None,
+) -> int:
+    """Revoke every active session for this user."""
+    now = datetime.now(UTC)
+    result = await session.execute(
+        update(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > now,
+        )
+        .values(is_revoked=True)
+        .returning(RefreshToken.id)
+    )
+    revoked_ids = result.fetchall()
+    count = len(revoked_ids)
+
+    await session.commit()
+
+    await _blacklist_access_token_if_valid(redis, access_token)
+
+    logger.info(
+        "logout_all.sessions_revoked",
+        extra={"user_id": str(user_id), "count": count},
+    )
+
+    return count
