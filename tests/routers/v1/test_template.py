@@ -967,6 +967,8 @@ async def test_duplicate_template_copy_is_draft(
     assert response.status_code == 201
     data = response.json()["data"]
     assert data["is_published"] is False
+    assert "share_slug" not in data
+    assert "published_at" not in data
 
 
 async def test_duplicate_template_original_unchanged(

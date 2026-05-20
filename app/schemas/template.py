@@ -93,7 +93,7 @@ class DuplicateTemplateResponse(BaseModel):
     )
     organiser_id: UUID = Field(..., description="Owner of the copy.")
     is_published: bool = Field(..., description="Always False for a new copy.")
-    created_at: datetime | None = Field(..., description="When the copy was created.")
+    created_at: datetime = Field(..., description="When the copy was created.")
 
 
 class PlatformTemplateResponse(BaseModel):
