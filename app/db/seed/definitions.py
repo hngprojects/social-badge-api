@@ -71,7 +71,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/social-badge/image/upload/platform-templates/achieveher_thumb.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386296/Template_1__Achieveher_selected_1_hok6n5.png",
     },
     # ── 2. Dev Summit ─────────────────────────────────────────────────────
     {
@@ -123,7 +123,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/social-badge/image/upload/platform-templates/dev_summit_thumb.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386234/Template_3__Hackathon_l5vcrc.png",
     },
     # ── 3. Men's Summit ───────────────────────────────────────────────────
     {
@@ -183,14 +183,14 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/social-badge/image/upload/platform-templates/mens_summit_thumb.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386233/Template_4__Founder_s_Circle_mev4wd.png",
     },
     # ── 4. Next Gen ───────────────────────────────────────────────────────
     {
         "title": "Next Gen",
         "category": "conferences",
         "canvas_data": {
-            "layout_id": "name_role_dark_v1",
+            "layout_id": "next_gen_mint_v1",
             "background": {
                 "type": "solid",
                 "color": "#C8E6C9",
@@ -251,6 +251,6 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/social-badge/image/upload/platform-templates/next_gen_thumb.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386233/Template_2__Dev_Summit_yg69cb.png",
     },
 ]
