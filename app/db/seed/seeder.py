@@ -87,6 +87,33 @@ async def seed_platform_templates() -> None:
             template.title: template for template in result.scalars().all()
         }
 
+        # Legacy platform template titles that are no longer part of the seed
+        legacy_titles = {
+            "Web3 Summit",
+            "Dev Hackathon",
+            "Builder Blitz",
+            "Founder's Circle",
+            "Men's Summit 2026",
+            "Harvesta 2026",
+            "Reddit Summit",
+            "Community Connect",
+            "Open Source Day",
+            "Bootcamp Badge",
+            "Graduate Cohort",
+            "Next Gen Meetup",
+            "Meetup Connect",
+            "Spark Support",
+            "Meet Our Speaker",
+            "Keynote Speaker",
+        }
+
+        deleted = 0
+        for title in list(existing.keys()):
+            if title in legacy_titles:
+                await session.delete(existing[title])
+                existing.pop(title)
+                deleted += 1
+
         inserted = 0
         updated = 0
 
@@ -119,6 +146,9 @@ async def seed_platform_templates() -> None:
                 inserted += 1
 
         await session.commit()
+        if deleted > 0:
+            logger.info("Deleted %d legacy platform templates.", deleted)
+
         if inserted == 0 and updated == 0:
             logger.info(
                 "Platform templates already seeded (%d found).",
