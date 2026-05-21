@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -436,6 +437,13 @@ async def delete_organiser_template(
                 logo_public_id,
                 template_id,
             )
+        except Exception:
+            logger.warning(
+                "Failed to delete logo asset %s for template %s from Cloudinary "
+                "— manual cleanup may be required",
+                logo_public_id,
+                template_id,
+            )
 
     for public_id in badge_public_ids:
         try:
@@ -447,3 +455,52 @@ async def delete_organiser_template(
                 public_id,
                 template_id,
             )
+        except Exception:
+            logger.warning(
+                "Failed to delete badge image asset %s for template %s from Cloudinary"
+                " — manual cleanup may be required",
+                public_id,
+                template_id,
+            )
+
+
+async def edit_organiser_template(
+    session: AsyncSession,
+    organiser_id: UUID,
+    template_id: UUID,
+    field_updates: dict[str, Any],
+    new_hashtags: list[str] | None,
+    update_hashtags: bool,
+) -> OrganiserTemplate:
+    result = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.hashtags))
+        .where(
+            OrganiserTemplate.id == template_id,
+            OrganiserTemplate.deleted_at.is_(None),
+        )
+    )
+    template = result.scalars().first()
+    if template is None:
+        raise OrganiserTemplateNotFoundError
+    if template.organiser_id != organiser_id:
+        raise NotTemplateOwnerError
+
+    for field, value in field_updates.items():
+        setattr(template, field, value)
+
+    if update_hashtags:
+        template.hashtags.clear()
+        for tag in new_hashtags or []:
+            template.hashtags.append(TemplateHashtag(hashtag=tag))
+
+    await session.commit()
+
+    # Re-query after commit to return a fully consistent object with
+    # the updated hashtag relationship loaded.
+    refreshed = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.hashtags))
+        .where(OrganiserTemplate.id == template_id)
+    )
+    return refreshed.scalars().one()
