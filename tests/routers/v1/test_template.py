@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
-from app.models import OrganiserTemplate, PlatformTemplate, User
+from app.models import Badge, OrganiserTemplate, PlatformTemplate, User
 
 
 @pytest.fixture
@@ -1473,3 +1474,237 @@ async def test_list_instances_limit_exceeds_maximum(
     )
 
     assert response.status_code == 422
+
+
+@pytest.fixture
+async def deletable_template(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="To Be Deleted",
+        canvas_data={"layout_id": "v1"},
+        logo_url=(
+            "https://res.cloudinary.com/mycloud/image/upload/"
+            "template-logos/logo-del.png"
+        ),
+        logo_public_id="template-logos/logo-del",
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    db_session.add(
+        Badge(
+            template_id=template.id,
+            participant_name="Attendee",
+            badge_image_url=(
+                "https://res.cloudinary.com/mycloud/image/upload/badges/badge-del.png"
+            ),
+            badge_public_id="badges/badge-del",
+        )
+    )
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_returns_204(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_removes_from_db(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    deletable_template: OrganiserTemplate,
+) -> None:
+    template_id = deletable_template.id
+
+    await client.delete(
+        f"/api/v1/templates/organizer/{template_id}",
+        cookies=auth_cookies,
+    )
+
+    result = await db_session.get(OrganiserTemplate, template_id)
+    assert result is None
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_triggers_logo_cloudinary_cleanup(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    mock_delete_logo.assert_awaited_once_with("template-logos/logo-del")
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_triggers_badge_cloudinary_cleanup(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    mock_delete_asset.assert_awaited_once_with("badges/badge-del")
+
+
+async def test_delete_template_unauthenticated(
+    client: AsyncClient,
+    deletable_template: OrganiserTemplate,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_delete_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Template not found."
+
+
+async def test_delete_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="del-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owner Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="del-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{template.id}",
+        cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "You do not own this template."
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_returns_204_despite_cloudinary_failure(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    mock_delete_logo.side_effect = Exception("Cloudinary down")
+    mock_delete_asset.side_effect = Exception("Cloudinary down")
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 204
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_soft_deleted_returns_404(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    soft_deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Soft Deleted",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."

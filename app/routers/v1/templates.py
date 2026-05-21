@@ -31,6 +31,7 @@ from app.schemas.template import (
 )
 from app.services.template import (
     create_template_instance,
+    delete_organiser_template,
     duplicate_template,
     get_platform_template,
     get_public_template_by_slug,
@@ -365,6 +366,51 @@ async def duplicate(
         message="Template duplicated successfully.",
         data=DuplicateTemplateResponse.model_validate(copy),
     )
+
+
+@router.delete(
+    "/organizer/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an organiser template",
+    description=(
+        "Permanently removes the organiser template and all associated records "
+        "(badges, hashtags) from the database. The Cloudinary logo and any "
+        "generated badge image assets are also deleted on a best-effort basis — "
+        "a Cloudinary failure does not cause the request to fail. "
+        "This action is irreversible."
+    ),
+    responses={
+        204: {"description": "Template deleted successfully."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the template owner."},
+        404: {"model": ErrorResponse, "description": "Template not found."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("30/minute")
+async def delete_template(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    template_id: UUID,
+) -> None:
+    """Permanently delete an organiser template and its Cloudinary assets."""
+    try:
+        await delete_organiser_template(
+            session=session,
+            organiser_id=current_user.id,
+            template_id=template_id,
+        )
+    except OrganiserTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+    except NotTemplateOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this template.",
+        ) from exc
 
 
 @router.put(

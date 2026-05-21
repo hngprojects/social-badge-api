@@ -20,7 +20,11 @@ from app.core.exceptions import (
 from app.core.slug import generate_share_slug
 from app.models import OrganiserTemplate, PlatformTemplate
 from app.models.templates import TemplateHashtag
-from app.services.cloudinary import delete_logo, upload_logo
+from app.services.cloudinary import (
+    delete_asset,
+    delete_logo,
+    upload_logo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -386,3 +390,59 @@ async def list_organiser_templates(
         total,
     )
     return templates, total
+
+
+async def delete_organiser_template(
+    session: AsyncSession,
+    organiser_id: UUID,
+    template_id: UUID,
+) -> None:
+    result = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.badges))
+        .where(
+            OrganiserTemplate.id == template_id,
+            OrganiserTemplate.deleted_at.is_(None),
+        )
+    )
+    template = result.scalars().first()
+    if template is None:
+        raise OrganiserTemplateNotFoundError
+    if template.organiser_id != organiser_id:
+        raise NotTemplateOwnerError
+
+    logo_public_id = template.logo_public_id
+    badge_public_ids = [
+        badge.badge_public_id for badge in template.badges if badge.badge_public_id
+    ]
+
+    await session.delete(template)
+    await session.commit()
+
+    logger.info(
+        "Deleted organiser template %s (organiser=%s)",
+        template_id,
+        organiser_id,
+    )
+
+    if logo_public_id:
+        try:
+            await delete_logo(logo_public_id)
+        except Exception:
+            logger.warning(
+                "Failed to delete logo asset %s for template %s from Cloudinary "
+                "— manual cleanup may be required",
+                logo_public_id,
+                template_id,
+            )
+
+    for public_id in badge_public_ids:
+        try:
+            await delete_asset(public_id)
+        except Exception:
+            logger.warning(
+                "Failed to delete badge image asset %s for template %s from Cloudinary"
+                " — manual cleanup may be required",
+                public_id,
+                template_id,
+            )
