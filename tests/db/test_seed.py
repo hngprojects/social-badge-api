@@ -40,8 +40,8 @@ def patched_session_local(db_session: AsyncSession) -> Iterator[None]:
         yield
 
 
-def test_platform_templates_seed_has_seventeen_entries() -> None:
-    assert len(PLATFORM_TEMPLATES_SEED) == 17
+def test_platform_templates_seed_has_four_entries() -> None:
+    assert len(PLATFORM_TEMPLATES_SEED) == 4
 
 
 def test_platform_templates_seed_titles_are_unique() -> None:
