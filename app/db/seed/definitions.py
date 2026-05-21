@@ -71,7 +71,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386296/Template_1__Achieveher_selected_1_hok6n5.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779387600/fc41ebe7642dccf7907c36811f194b1d7a6f41c8_ftqoqi.png",
     },
     # ── 2. Dev Summit ─────────────────────────────────────────────────────
     {
@@ -123,7 +123,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386234/Template_3__Hackathon_l5vcrc.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779387599/4f74e263830f11168b54d90e85dfa8642808d5c0_u6zjim.png",
     },
     # ── 3. Men's Summit ───────────────────────────────────────────────────
     {
@@ -183,7 +183,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386233/Template_4__Founder_s_Circle_mev4wd.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779387599/524ee616a511b354daeef77e6c4e4a0505e6fadb_e2qf7q.png",
     },
     # ── 4. Next Gen ───────────────────────────────────────────────────────
     {
@@ -251,6 +251,6 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779386233/Template_2__Dev_Summit_yg69cb.png",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1779387600/dce59118d742acfad384892ad4119a55c6bd74b6_i9ouot.png",
     },
 ]
