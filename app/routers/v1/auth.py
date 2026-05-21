@@ -688,7 +688,7 @@ async def google_callback(
         background_tasks.add_task(send_onboarding_email, user.email)
 
     redirect = RedirectResponse(
-        url=f"{settings.FRONTEND_URL}/coming-soon",
+        url=f"{settings.FRONTEND_URL}/dashboard",
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
 

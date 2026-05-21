@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from sqlalchemy import select
@@ -7,9 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotTemplateOwnerError, OrganiserTemplateNotFoundError
 from app.core.security import hash_password
-from app.models import OrganiserTemplate, PlatformTemplate, User
+from app.models import Badge, OrganiserTemplate, PlatformTemplate, User
 from app.models.templates import TemplateHashtag
-from app.services.template import duplicate_template, list_organiser_templates
+from app.services.template import (
+    delete_organiser_template,
+    duplicate_template,
+    list_organiser_templates,
+)
 
 
 @pytest.fixture
@@ -575,3 +580,393 @@ async def test_pagination_beyond_last_page_returns_empty(
 
     assert total == 1
     assert templates == []
+
+
+@pytest.fixture
+async def template_with_logo(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Event With Logo",
+        canvas_data={"layout_id": "v1"},
+        logo_url="https://res.cloudinary.com/mycloud/image/upload/template-logos/logo-abc.png",
+        logo_public_id="template-logos/logo-abc",
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@pytest.fixture
+async def template_with_badges(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Event With Badges",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for i in range(2):
+        db_session.add(
+            Badge(
+                template_id=template.id,
+                participant_name=f"Participant {i}",
+                badge_image_url=(
+                    f"https://res.cloudinary.com/mycloud/image/upload/"
+                    f"badges/badge-{i}.png"
+                ),
+                badge_public_id=f"badges/badge-{i}",
+            )
+        )
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@pytest.fixture
+async def template_with_badges_and_logo(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Full Event",
+        canvas_data={"layout_id": "v1"},
+        logo_url="https://res.cloudinary.com/mycloud/image/upload/template-logos/logo-full.png",
+        logo_public_id="template-logos/logo-full",
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    db_session.add(
+        Badge(
+            template_id=template.id,
+            participant_name="Speaker",
+            badge_image_url=(
+                "https://res.cloudinary.com/mycloud/image/upload/badges/badge-full.png"
+            ),
+            badge_public_id="badges/badge-full",
+        )
+    )
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@pytest.fixture
+async def bare_template(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Template with no logo and no badges."""
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Bare Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_removes_template_from_db(
+    _mock_delete: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    bare_template: OrganiserTemplate,
+) -> None:
+    template_id = bare_template.id
+
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_id,
+    )
+
+    result = await db_session.get(OrganiserTemplate, template_id)
+    assert result is None
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_cascades_badges_from_db(
+    _mock_delete: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    template_with_badges: OrganiserTemplate,
+) -> None:
+    template_id = template_with_badges.id
+
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_id,
+    )
+
+    result = await db_session.execute(
+        select(Badge).where(Badge.template_id == template_id)
+    )
+    assert result.scalars().all() == []
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_cascades_hashtags_from_db(
+    _mock_delete: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Tagged Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.flush()
+    db_session.add(TemplateHashtag(template_id=template.id, hashtag="#DeleteMe"))
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    template_id = template.id
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_id,
+    )
+
+    result = await db_session.execute(
+        select(TemplateHashtag).where(TemplateHashtag.template_id == template_id)
+    )
+    assert result.scalars().all() == []
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_calls_cloudinary_for_logo(
+    mock_delete_logo: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    template_with_logo: OrganiserTemplate,
+) -> None:
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_with_logo.id,
+    )
+
+    mock_delete_logo.assert_awaited_once_with("template-logos/logo-abc")
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_calls_cloudinary_for_badge_images(
+    _mock_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    template_with_badges: OrganiserTemplate,
+) -> None:
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_with_badges.id,
+    )
+
+    expected_calls = [
+        call("badges/badge-0"),
+        call("badges/badge-1"),
+    ]
+    mock_delete_asset.assert_has_awaits(expected_calls, any_order=True)
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_skips_logo_cleanup_when_no_logo(
+    mock_delete_logo: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    bare_template: OrganiserTemplate,
+) -> None:
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=bare_template.id,
+    )
+
+    mock_delete_logo.assert_not_called()
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_skips_badge_cleanup_when_no_badge_images(
+    _mock_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    bare_template: OrganiserTemplate,
+) -> None:
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=bare_template.id,
+    )
+
+    mock_delete_asset.assert_not_called()
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_continues_when_logo_cloudinary_fails(
+    mock_delete_logo: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    template_with_logo: OrganiserTemplate,
+) -> None:
+    mock_delete_logo.side_effect = Exception("Cloudinary unavailable")
+    template_id = template_with_logo.id
+
+    # Must not raise
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_id,
+    )
+
+    # Template is gone from DB despite Cloudinary failure
+    result = await db_session.get(OrganiserTemplate, template_id)
+    assert result is None
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_continues_when_badge_cloudinary_fails(
+    _mock_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    template_with_badges: OrganiserTemplate,
+) -> None:
+    mock_delete_asset.side_effect = Exception("Cloudinary unavailable")
+    template_id = template_with_badges.id
+
+    # Must not raise
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template_id,
+    )
+
+    result = await db_session.get(OrganiserTemplate, template_id)
+    assert result is None
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_skips_badge_without_public_id(
+    _mock_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Badges with no badge_public_id are skipped during Cloudinary cleanup."""
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Badge No Public ID",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.flush()
+    db_session.add(
+        Badge(
+            template_id=template.id,
+            participant_name="Attendee",
+            badge_image_url="https://cdn.example.com/badge.png",
+            badge_public_id=None,
+        )
+    )
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    await delete_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template.id,
+    )
+
+    mock_delete_asset.assert_not_called()
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_raises_not_found_for_missing_template(
+    _mock: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+) -> None:
+    import uuid
+
+    with pytest.raises(OrganiserTemplateNotFoundError):
+        await delete_organiser_template(
+            session=db_session,
+            organiser_id=organiser.id,
+            template_id=uuid.uuid4(),
+        )
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_raises_not_found_for_soft_deleted_template(
+    _mock: AsyncMock,
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    soft_deleted = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Soft Deleted",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    with pytest.raises(OrganiserTemplateNotFoundError):
+        await delete_organiser_template(
+            session=db_session,
+            organiser_id=organiser.id,
+            template_id=soft_deleted.id,
+        )
+
+
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_raises_not_owner(
+    _mock: AsyncMock,
+    db_session: AsyncSession,
+    bare_template: OrganiserTemplate,
+) -> None:
+    import uuid
+
+    with pytest.raises(NotTemplateOwnerError):
+        await delete_organiser_template(
+            session=db_session,
+            organiser_id=uuid.uuid4(),
+            template_id=bare_template.id,
+        )

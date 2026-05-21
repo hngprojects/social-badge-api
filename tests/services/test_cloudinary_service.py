@@ -12,7 +12,10 @@ import pytest
 
 from app.core.config import settings
 from app.core.exceptions import CloudinaryUploadError
-from app.services.cloudinary import delete_logo, upload_logo
+from app.services.cloudinary import (
+    delete_logo,
+    upload_logo,
+)
 
 pytestmark = pytest.mark.skipif(
     not (
