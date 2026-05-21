@@ -3,6 +3,7 @@ import secrets
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.newsletter import NewsletterSubscriber
@@ -45,8 +46,21 @@ async def subscribe(
         subscriber.unsubscribe_token = _make_unsubscribe_token()
         subscriber.unsubscribed_at = None
 
-    await session.commit()
-    await session.refresh(subscriber)
+    try:
+        await session.commit()
+        await session.refresh(subscriber)
+    except IntegrityError:
+        await session.rollback()
+        result = await session.execute(
+            select(NewsletterSubscriber).where(NewsletterSubscriber.email == email)
+        )
+        subscriber = result.scalar_one_or_none()
+        if subscriber is None:  # pragma: no cover
+            raise RuntimeError(
+                f"Subscriber row missing after IntegrityError for {email!r}"
+            ) from None
+        # Another request beat us to it; treat as already-active.
+        return subscriber, False
 
     try:
         await send_newsletter_welcome_email(

@@ -118,6 +118,21 @@ async def test_subscribe_email_delivery_failure_does_not_fail_request(
     assert response.json()["status"] == "success"
 
 
+async def test_subscribe_rate_limit(client: AsyncClient) -> None:
+    """The 6th request within one minute must be rejected with 429."""
+    with patch(
+        "app.services.newsletter.send_newsletter_welcome_email",
+        new_callable=AsyncMock,
+    ):
+        responses = [
+            await _subscribe(client, "ratelimit@example.com") for _ in range(6)
+        ]
+
+    for resp in responses[:5]:
+        assert resp.status_code == 200
+    assert responses[5].status_code == 429
+
+
 # ---------------------------------------------------------------------------
 # Unsubscribe tests
 # ---------------------------------------------------------------------------
