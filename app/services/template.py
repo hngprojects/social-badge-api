@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import (
+    CloudinaryUploadError,
     NotTemplateOwnerError,
     OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
@@ -428,7 +429,7 @@ async def delete_organiser_template(
     if logo_public_id:
         try:
             await delete_logo(logo_public_id)
-        except Exception:
+        except CloudinaryUploadError:
             logger.warning(
                 "Failed to delete logo asset %s for template %s from Cloudinary "
                 "— manual cleanup may be required",
@@ -439,7 +440,7 @@ async def delete_organiser_template(
     for public_id in badge_public_ids:
         try:
             await delete_asset(public_id)
-        except Exception:
+        except CloudinaryUploadError:
             logger.warning(
                 "Failed to delete badge image asset %s for template %s from Cloudinary"
                 " — manual cleanup may be required",
