@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     CONTACT_RECIPIENT_EMAIL: str = ""
     CONTACT_NOTIFICATION_SUBJECT: str = "New Contact Form Submission — Flare Tag"
     CONTACT_CONFIRMATION_SUBJECT: str = "We received your message — Flare Tag"
+    NEWSLETTER_WELCOME_SUBJECT: str = "You're subscribed to the Flare Tag newsletter!"
     VERIFICATION_SUBJECT: str = "Verify your Flare Tag account"
     ACCOUNT_LOCK_SUBJECT: str = "Your Flare Tag account has been locked"
     PASSWORD_RESET_SUBJECT: str = "Reset your Flare Tag password"  # noqa: S105
