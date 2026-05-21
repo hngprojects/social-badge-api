@@ -65,3 +65,11 @@ async def upload_logo(data: bytes) -> tuple[str, str]:
 
 async def delete_logo(public_id: str) -> None:
     await asyncio.to_thread(_delete_sync, public_id)
+
+
+async def delete_asset(public_id: str) -> None:
+    """Delete any Cloudinary asset by public_id.
+
+    Use this for non-logo assets such as generated badge images.
+    """
+    await asyncio.to_thread(_delete_sync, public_id)

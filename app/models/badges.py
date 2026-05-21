@@ -30,6 +30,7 @@ class Badge(Base):
     participant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     profile_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     badge_image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    badge_public_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

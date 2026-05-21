@@ -1,14 +1,16 @@
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
-from app.models import OrganiserTemplate, PlatformTemplate, User
+from app.models import Badge, OrganiserTemplate, PlatformTemplate, TemplateHashtag, User
 
 
 @pytest.fixture
@@ -895,3 +897,1112 @@ async def test_get_platform_template_not_found(
     data = response.json()
     assert data["status"] == "error"
     assert data["message"] == "Platform template not found."
+
+
+@pytest.fixture
+async def source_for_duplicate(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Organiser template with hashtags, used as the duplication source."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Source Event",
+        canvas_data={"layout_id": "photo_gradient_v1", "accent": "#3498DB"},
+        default_caption="Attending Source Event!",
+        destination_link="https://source.example.com",
+        logo_url="https://cdn.example.com/logo.png",
+        logo_public_id="template-logos/logo-src",
+        access_type=0,
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#SourceEvent", "#Tech"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_duplicate_template_success(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    source_for_duplicate: OrganiserTemplate,
+    test_user: User,
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template duplicated successfully."
+    assert data["data"]["id"] != str(source_for_duplicate.id)
+    assert data["data"]["title"] == "Source Event (Copy)"
+    assert data["data"]["organiser_id"] == str(test_user.id)
+    assert data["data"]["platform_template_id"] == str(
+        source_for_duplicate.platform_template_id
+    )
+    assert data["data"]["is_published"] is False
+    assert data["data"]["created_at"] is not None
+
+
+async def test_duplicate_template_copy_is_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    """The response must never carry a slug or published state."""
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["is_published"] is False
+    assert "share_slug" not in data
+    assert "published_at" not in data
+
+
+async def test_duplicate_template_original_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    await db_session.refresh(source_for_duplicate)
+    assert source_for_duplicate.title == "Source Event"
+
+
+async def test_duplicate_template_unauthenticated(
+    client: AsyncClient,
+    source_for_duplicate: OrganiserTemplate,
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_duplicate_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.post(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Template not found."
+
+
+async def test_duplicate_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="dup-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owner Only Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="dup-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    other_token = create_access_token(other.id)
+    response = await client.post(
+        f"/api/v1/templates/organizer/{template.id}/duplicate",
+        cookies={settings.ACCESS_COOKIE: other_token},
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "You do not own this template."
+
+
+async def test_duplicate_soft_deleted_template_returns_404(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Gone Event",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(deleted)
+    await db_session.commit()
+    await db_session.refresh(deleted)
+
+    response = await client.post(
+        f"/api/v1/templates/organizer/{deleted.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_duplicate_published_template_copy_is_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    published = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Live Event",
+        canvas_data={"layout_id": "v1"},
+        is_published=True,
+        share_slug="live-slug-001",
+        published_at=datetime.now(UTC),
+    )
+    db_session.add(published)
+    await db_session.commit()
+    await db_session.refresh(published)
+
+    response = await client.post(
+        f"/api/v1/templates/organizer/{published.id}/duplicate",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["is_published"] is False
+
+
+@pytest.fixture
+async def organiser_templates_set(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> list[OrganiserTemplate]:
+    """Three templates: two drafts, one published."""
+    from datetime import UTC, datetime
+
+    draft_a = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Alpha",
+        canvas_data={"layout_id": "v1"},
+        is_published=False,
+    )
+    draft_b = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Beta",
+        canvas_data={"layout_id": "v1"},
+        is_published=False,
+    )
+    published = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Published Gamma",
+        canvas_data={"layout_id": "v1"},
+        is_published=True,
+        share_slug="gamma-slug-01",
+        published_at=datetime.now(UTC),
+    )
+    for t in [draft_a, draft_b, published]:
+        db_session.add(t)
+
+    await db_session.commit()
+    for t in [draft_a, draft_b, published]:
+        await db_session.refresh(t)
+
+    return [draft_a, draft_b, published]
+
+
+async def test_list_instances_success(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template instances retrieved successfully."
+    assert data["data"]["total"] == 3
+    assert len(data["data"]["templates"]) == 3
+
+
+async def test_list_instances_response_shape(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    item = response.json()["data"]["templates"][0]
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "thumbnail_url",
+        "is_published",
+        "status",
+        "share_slug",
+        "published_at",
+        "created_at",
+        "updated_at",
+    }
+    assert expected_keys == set(item.keys())
+
+
+async def test_list_instances_status_field_draft(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    items = response.json()["data"]["templates"]
+    draft_items = [t for t in items if not t["is_published"]]
+    assert all(t["status"] == "draft" for t in draft_items)
+
+
+async def test_list_instances_status_field_published(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    items = response.json()["data"]["templates"]
+    published_items = [t for t in items if t["is_published"]]
+    assert all(t["status"] == "published" for t in published_items)
+
+
+async def test_list_instances_canvas_data_not_exposed(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    organiser_templates_set: list[OrganiserTemplate],
+) -> None:
+    """canvas_data must not appear in the list response — it is large and unused."""
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    for item in response.json()["data"]["templates"]:
+        assert "canvas_data" not in item
+
+
+async def test_list_instances_empty_when_no_templates(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["templates"] == []
+    assert data["total"] == 0
+    assert data["prev"] is None
+    assert data["next"] is None
+
+
+async def test_list_instances_unauthenticated(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/templates/organizer/instances")
+
+    assert response.status_code in (401, 403)
+
+
+async def test_list_instances_excludes_soft_deleted(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    live = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Live Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Deleted Template",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(live)
+    db_session.add(deleted)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["total"] == 1
+    assert data["templates"][0]["title"] == "Live Template"
+
+
+async def test_list_instances_only_returns_current_users_templates(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+
+    other = User(
+        first_name="Other",
+        last_name="Organiser",
+        email="other-list-router@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    mine = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="My Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    theirs = OrganiserTemplate(
+        organiser_id=other.id,
+        platform_template_id=platform_template.id,
+        title="Their Template",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(mine)
+    db_session.add(theirs)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["total"] == 1
+    assert data["templates"][0]["title"] == "My Template"
+
+
+async def test_list_instances_pagination_prev_next_links(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(5):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["page"] == 2
+    assert data["limit"] == 2
+    assert data["total"] == 5
+    assert len(data["templates"]) == 2
+    assert "page=1" in data["prev"]
+    assert "page=3" in data["next"]
+
+
+async def test_list_instances_first_page_has_no_prev(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(3):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=1&limit=2",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["prev"] is None
+    assert data["next"] is not None
+
+
+async def test_list_instances_last_page_has_no_next(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(3):
+        db_session.add(
+            OrganiserTemplate(
+                organiser_id=test_user.id,
+                platform_template_id=platform_template.id,
+                title=f"Event {i}",
+                canvas_data={"layout_id": "v1"},
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        cookies=auth_cookies,
+    )
+
+    data = response.json()["data"]
+    assert data["next"] is None
+    assert data["prev"] is not None
+
+
+async def test_list_instances_invalid_page_param(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?page=0",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_list_instances_limit_exceeds_maximum(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        "/api/v1/templates/organizer/instances?limit=101",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.fixture
+async def deletable_template(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="To Be Deleted",
+        canvas_data={"layout_id": "v1"},
+        logo_url=(
+            "https://res.cloudinary.com/mycloud/image/upload/"
+            "template-logos/logo-del.png"
+        ),
+        logo_public_id="template-logos/logo-del",
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    db_session.add(
+        Badge(
+            template_id=template.id,
+            participant_name="Attendee",
+            badge_image_url=(
+                "https://res.cloudinary.com/mycloud/image/upload/badges/badge-del.png"
+            ),
+            badge_public_id="badges/badge-del",
+        )
+    )
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_returns_204(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_removes_from_db(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    deletable_template: OrganiserTemplate,
+) -> None:
+    template_id = deletable_template.id
+
+    await client.delete(
+        f"/api/v1/templates/organizer/{template_id}",
+        cookies=auth_cookies,
+    )
+
+    result = await db_session.get(OrganiserTemplate, template_id)
+    assert result is None
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_triggers_logo_cloudinary_cleanup(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    mock_delete_logo.assert_awaited_once_with("template-logos/logo-del")
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_triggers_badge_cloudinary_cleanup(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    mock_delete_asset.assert_awaited_once_with("badges/badge-del")
+
+
+async def test_delete_template_unauthenticated(
+    client: AsyncClient,
+    deletable_template: OrganiserTemplate,
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_delete_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["message"] == "Template not found."
+
+
+async def test_delete_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="del-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owner Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="del-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{template.id}",
+        cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "You do not own this template."
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_returns_204_despite_cloudinary_failure(
+    mock_delete_logo: AsyncMock,
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    deletable_template: OrganiserTemplate,
+) -> None:
+    mock_delete_logo.side_effect = Exception("Cloudinary down")
+    mock_delete_asset.side_effect = Exception("Cloudinary down")
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{deletable_template.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 204
+
+
+@patch("app.services.template.delete_asset", new_callable=AsyncMock)
+@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+async def test_delete_template_soft_deleted_returns_404(
+    _mock_logo: AsyncMock,
+    _mock_asset: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    soft_deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Soft Deleted",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    response = await client.delete(
+        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        cookies=auth_cookies,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+@pytest.fixture
+async def patch_target(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Template with hashtags used as the target for PATCH tests."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Patch Me",
+        canvas_data={"layout_id": "v1", "accent": "#000000"},
+        default_caption="Original caption",
+        destination_link="https://original.example.com",
+        thumbnail_url="https://cdn.example.com/original.png",
+        access_type=0,
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#Before", "#Edit"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_patch_template_returns_200(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Updated Title"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template updated successfully."
+
+
+async def test_patch_template_response_contains_full_object(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Full Response Check"},
+    )
+
+    data = response.json()["data"]
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "canvas_data",
+        "default_caption",
+        "destination_link",
+        "thumbnail_url",
+        "logo_url",
+        "access_type",
+        "is_published",
+        "share_slug",
+        "published_at",
+        "hashtags",
+        "created_at",
+        "updated_at",
+    }
+    assert expected_keys == set(data.keys())
+
+
+async def test_patch_template_updates_title(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Brand New Title"},
+    )
+
+    assert response.json()["data"]["title"] == "Brand New Title"
+
+
+async def test_patch_template_unset_fields_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    original_canvas = patch_target.canvas_data
+
+    await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Title Only"},
+    )
+
+    stored = await db_session.get(OrganiserTemplate, patch_target.id)
+    assert stored is not None
+    assert stored.canvas_data == original_canvas
+
+
+async def test_patch_template_replaces_hashtags(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"hashtags": ["#NewTag", "#Another"]},
+    )
+
+    tags = sorted(response.json()["data"]["hashtags"])
+    assert tags == ["#Another", "#NewTag"]
+
+
+async def test_patch_template_clears_hashtags_with_empty_list(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"hashtags": []},
+    )
+
+    assert response.json()["data"]["hashtags"] == []
+
+
+async def test_patch_template_omitting_hashtags_leaves_them_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "No Hashtag Key"},
+    )
+
+    stored_tags = await db_session.execute(
+        select(TemplateHashtag).where(TemplateHashtag.template_id == patch_target.id)
+    )
+    tags = sorted(t.hashtag for t in stored_tags.scalars().all())
+    assert tags == ["#Before", "#Edit"]
+
+
+async def test_patch_template_unauthenticated(
+    client: AsyncClient,
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        json={"title": "No Auth"},
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_patch_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        cookies=auth_cookies,
+        json={"title": "Ghost"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_patch_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="patch-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owned Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="patch-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{template.id}",
+        cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
+        json={"title": "Hijacked"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "You do not own this template."
+
+
+async def test_patch_template_empty_title_rejected(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_template_empty_body_is_no_op(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    """Sending an empty object should succeed and leave all fields unchanged."""
+    original_title = patch_target.title
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={},
+    )
+
+    assert response.status_code == 200
+    stored = await db_session.get(OrganiserTemplate, patch_target.id)
+    assert stored is not None
+    assert stored.title == original_title
+
+
+async def test_patch_template_soft_deleted_returns_404(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    soft_deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Gone",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        cookies=auth_cookies,
+        json={"title": "Attempt"},
+    )
+
+    assert response.status_code == 404
