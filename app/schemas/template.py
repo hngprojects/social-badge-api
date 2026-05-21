@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
 class CreateTemplateInstanceRequest(BaseModel):
@@ -175,6 +175,60 @@ class OrganiserTemplateListResponse(BaseModel):
     limit: int = Field(..., description="Items per page.")
     prev: str | None = Field(None, description="Relative URL to the previous page.")
     next: str | None = Field(None, description="Relative URL to the next page.")
+
+
+class EditTemplateRequest(BaseModel):
+    title: str | None = None
+    canvas_data: dict[str, Any] | None = None
+    default_caption: str | None = None
+    destination_link: str | None = None
+    thumbnail_url: str | None = None
+    access_type: int | None = None
+    hashtags: list[str] | None = None
+
+    @field_validator("title")
+    @classmethod
+    def title_not_empty(cls, val: str | None) -> str | None:
+        if val is not None and not val.strip():
+            raise ValueError("title cannot be empty")
+        return val.strip() if val is not None else val
+
+    @field_validator("hashtags")
+    @classmethod
+    def clean_hashtags(cls, val: list[str] | None) -> list[str] | None:
+        if val is None:
+            return None
+        stripped = [tag.strip() for tag in val if tag.strip()]
+        # Preserve insertion order while deduplicating.
+        return list(dict.fromkeys(stripped))
+
+
+class OrganiserTemplateDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    platform_template_id: UUID
+    canvas_data: dict[str, Any]
+    default_caption: str | None
+    destination_link: str | None
+    thumbnail_url: str | None
+    logo_url: str | None
+    access_type: int
+    is_published: bool
+    share_slug: str | None
+    published_at: datetime | None
+    hashtags: list[str]
+    created_at: datetime | None
+    updated_at: datetime | None
+
+    @field_validator("hashtags", mode="before")
+    @classmethod
+    def extract_hashtag_values(cls, val: Any) -> list[str]:
+        """Convert a list of TemplateHashtag ORM objects to plain strings."""
+        if not isinstance(val, list):
+            return []
+        return [item.hashtag if hasattr(item, "hashtag") else str(item) for item in val]
 
 
 class PlatformTemplateListResponse(BaseModel):

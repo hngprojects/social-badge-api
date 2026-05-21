@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
@@ -13,6 +14,7 @@ from app.models.templates import TemplateHashtag
 from app.services.template import (
     delete_organiser_template,
     duplicate_template,
+    edit_organiser_template,
     list_organiser_templates,
 )
 
@@ -969,4 +971,274 @@ async def test_delete_raises_not_owner(
             session=db_session,
             organiser_id=uuid.uuid4(),
             template_id=bare_template.id,
+        )
+
+
+@pytest.fixture
+async def editable_template(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Original Title",
+        canvas_data={"layout_id": "v1", "accent": "#000000"},
+        default_caption="Original caption",
+        destination_link="https://original.example.com",
+        thumbnail_url="https://cdn.example.com/original.png",
+        access_type=0,
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#Original", "#Event"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def _call_edit(
+    db_session: AsyncSession,
+    organiser: User,
+    template: OrganiserTemplate,
+    field_updates: dict[str, Any],
+    new_hashtags: list[str] | None = None,
+    update_hashtags: bool = False,
+) -> OrganiserTemplate:
+    return await edit_organiser_template(
+        session=db_session,
+        organiser_id=organiser.id,
+        template_id=template.id,
+        field_updates=field_updates,
+        new_hashtags=new_hashtags,
+        update_hashtags=update_hashtags,
+    )
+
+
+async def test_edit_updates_title(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session, organiser, editable_template, {"title": "New Title"}
+    )
+
+    assert result.title == "New Title"
+
+
+async def test_edit_updates_canvas_data(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    new_canvas = {"layout_id": "v2", "accent": "#FF0000"}
+    result = await _call_edit(
+        db_session, organiser, editable_template, {"canvas_data": new_canvas}
+    )
+
+    assert result.canvas_data == new_canvas
+
+
+async def test_edit_updates_multiple_fields_at_once(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session,
+        organiser,
+        editable_template,
+        {
+            "title": "Multi Update",
+            "default_caption": "New caption",
+            "destination_link": "https://new.example.com",
+        },
+    )
+
+    assert result.title == "Multi Update"
+    assert result.default_caption == "New caption"
+    assert result.destination_link == "https://new.example.com"
+
+
+async def test_edit_leaves_unset_fields_unchanged(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    original_canvas = editable_template.canvas_data
+    original_caption = editable_template.default_caption
+
+    await _call_edit(
+        db_session, organiser, editable_template, {"title": "Only Title Changed"}
+    )
+
+    refreshed = await db_session.get(OrganiserTemplate, editable_template.id)
+    assert refreshed is not None
+    assert refreshed.canvas_data == original_canvas
+    assert refreshed.default_caption == original_caption
+
+
+async def test_edit_clears_nullable_field_when_sent_as_none(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session, organiser, editable_template, {"default_caption": None}
+    )
+
+    assert result.default_caption is None
+
+
+async def test_edit_persists_changes_to_database(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    await _call_edit(
+        db_session, organiser, editable_template, {"title": "Persisted Title"}
+    )
+
+    stored = await db_session.get(OrganiserTemplate, editable_template.id)
+    assert stored is not None
+    assert stored.title == "Persisted Title"
+
+
+async def test_edit_replaces_hashtags_when_provided(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session,
+        organiser,
+        editable_template,
+        {},
+        new_hashtags=["#NewTag", "#Another"],
+        update_hashtags=True,
+    )
+
+    tags = sorted(tag.hashtag for tag in result.hashtags)
+    assert tags == ["#Another", "#NewTag"]
+
+
+async def test_edit_clears_hashtags_when_empty_list_provided(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session,
+        organiser,
+        editable_template,
+        {},
+        new_hashtags=[],
+        update_hashtags=True,
+    )
+
+    assert result.hashtags == []
+
+
+async def test_edit_leaves_hashtags_unchanged_when_key_omitted(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    await _call_edit(
+        db_session,
+        organiser,
+        editable_template,
+        {"title": "Title Only"},
+        update_hashtags=False,
+    )
+
+    stored_tags = await db_session.execute(
+        select(TemplateHashtag).where(
+            TemplateHashtag.template_id == editable_template.id
+        )
+    )
+    tags = sorted(t.hashtag for t in stored_tags.scalars().all())
+    assert tags == ["#Event", "#Original"]
+
+
+async def test_edit_returns_template_with_hashtags_loaded(
+    db_session: AsyncSession,
+    organiser: User,
+    editable_template: OrganiserTemplate,
+) -> None:
+    result = await _call_edit(
+        db_session,
+        organiser,
+        editable_template,
+        {},
+        new_hashtags=["#Loaded"],
+        update_hashtags=True,
+    )
+
+    # Relationship must be accessible without triggering lazy load errors.
+    assert isinstance(result.hashtags, list)
+    assert len(result.hashtags) == 1
+
+
+async def test_edit_raises_not_found_for_missing_template(
+    db_session: AsyncSession,
+    organiser: User,
+) -> None:
+    with pytest.raises(OrganiserTemplateNotFoundError):
+        await edit_organiser_template(
+            session=db_session,
+            organiser_id=organiser.id,
+            template_id=uuid.uuid4(),
+            field_updates={"title": "Ghost"},
+            new_hashtags=None,
+            update_hashtags=False,
+        )
+
+
+async def test_edit_raises_not_found_for_soft_deleted_template(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from datetime import UTC, datetime
+
+    soft_deleted = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title="Gone",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    with pytest.raises(OrganiserTemplateNotFoundError):
+        await edit_organiser_template(
+            session=db_session,
+            organiser_id=organiser.id,
+            template_id=soft_deleted.id,
+            field_updates={"title": "Attempt"},
+            new_hashtags=None,
+            update_hashtags=False,
+        )
+
+
+async def test_edit_raises_not_owner(
+    db_session: AsyncSession,
+    editable_template: OrganiserTemplate,
+) -> None:
+    with pytest.raises(NotTemplateOwnerError):
+        await edit_organiser_template(
+            session=db_session,
+            organiser_id=uuid.uuid4(),
+            template_id=editable_template.id,
+            field_updates={"title": "Hijacked"},
+            new_hashtags=None,
+            update_hashtags=False,
         )

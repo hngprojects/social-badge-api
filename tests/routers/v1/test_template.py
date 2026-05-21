@@ -4,12 +4,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.core.token import create_access_token
-from app.models import Badge, OrganiserTemplate, PlatformTemplate, User
+from app.models import Badge, OrganiserTemplate, PlatformTemplate, TemplateHashtag, User
 
 
 @pytest.fixture
@@ -1708,3 +1709,300 @@ async def test_delete_template_soft_deleted_returns_404(
 
     assert response.status_code == 404
     assert response.json()["message"] == "Template not found."
+
+
+@pytest.fixture
+async def patch_target(
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> OrganiserTemplate:
+    """Template with hashtags used as the target for PATCH tests."""
+    from app.models.templates import TemplateHashtag
+
+    template = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Patch Me",
+        canvas_data={"layout_id": "v1", "accent": "#000000"},
+        default_caption="Original caption",
+        destination_link="https://original.example.com",
+        thumbnail_url="https://cdn.example.com/original.png",
+        access_type=0,
+    )
+    db_session.add(template)
+    await db_session.flush()
+
+    for tag in ["#Before", "#Edit"]:
+        db_session.add(TemplateHashtag(template_id=template.id, hashtag=tag))
+
+    await db_session.commit()
+    await db_session.refresh(template)
+    return template
+
+
+async def test_patch_template_returns_200(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Updated Title"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Template updated successfully."
+
+
+async def test_patch_template_response_contains_full_object(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Full Response Check"},
+    )
+
+    data = response.json()["data"]
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "canvas_data",
+        "default_caption",
+        "destination_link",
+        "thumbnail_url",
+        "logo_url",
+        "access_type",
+        "is_published",
+        "share_slug",
+        "published_at",
+        "hashtags",
+        "created_at",
+        "updated_at",
+    }
+    assert expected_keys == set(data.keys())
+
+
+async def test_patch_template_updates_title(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Brand New Title"},
+    )
+
+    assert response.json()["data"]["title"] == "Brand New Title"
+
+
+async def test_patch_template_unset_fields_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    original_canvas = patch_target.canvas_data
+
+    await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "Title Only"},
+    )
+
+    stored = await db_session.get(OrganiserTemplate, patch_target.id)
+    assert stored is not None
+    assert stored.canvas_data == original_canvas
+
+
+async def test_patch_template_replaces_hashtags(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"hashtags": ["#NewTag", "#Another"]},
+    )
+
+    tags = sorted(response.json()["data"]["hashtags"])
+    assert tags == ["#Another", "#NewTag"]
+
+
+async def test_patch_template_clears_hashtags_with_empty_list(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"hashtags": []},
+    )
+
+    assert response.json()["data"]["hashtags"] == []
+
+
+async def test_patch_template_omitting_hashtags_leaves_them_unchanged(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "No Hashtag Key"},
+    )
+
+    stored_tags = await db_session.execute(
+        select(TemplateHashtag).where(TemplateHashtag.template_id == patch_target.id)
+    )
+    tags = sorted(t.hashtag for t in stored_tags.scalars().all())
+    assert tags == ["#Before", "#Edit"]
+
+
+async def test_patch_template_unauthenticated(
+    client: AsyncClient,
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        json={"title": "No Auth"},
+    )
+
+    assert response.status_code in (401, 403)
+
+
+async def test_patch_template_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        cookies=auth_cookies,
+        json={"title": "Ghost"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Template not found."
+
+
+async def test_patch_template_not_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    platform_template: PlatformTemplate,
+) -> None:
+    from app.core.security import hash_password
+    from app.core.token import create_access_token
+
+    owner = User(
+        first_name="Owner",
+        last_name="User",
+        email="patch-owner@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(owner)
+    await db_session.flush()
+
+    template = OrganiserTemplate(
+        organiser_id=owner.id,
+        platform_template_id=platform_template.id,
+        title="Owned Event",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    other = User(
+        first_name="Other",
+        last_name="User",
+        email="patch-other@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{template.id}",
+        cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
+        json={"title": "Hijacked"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "You do not own this template."
+
+
+async def test_patch_template_empty_title_rejected(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: OrganiserTemplate,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_template_empty_body_is_no_op(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    patch_target: OrganiserTemplate,
+) -> None:
+    """Sending an empty object should succeed and leave all fields unchanged."""
+    original_title = patch_target.title
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{patch_target.id}",
+        cookies=auth_cookies,
+        json={},
+    )
+
+    assert response.status_code == 200
+    stored = await db_session.get(OrganiserTemplate, patch_target.id)
+    assert stored is not None
+    assert stored.title == original_title
+
+
+async def test_patch_template_soft_deleted_returns_404(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    soft_deleted = OrganiserTemplate(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Gone",
+        canvas_data={"layout_id": "v1"},
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(soft_deleted)
+    await db_session.commit()
+    await db_session.refresh(soft_deleted)
+
+    response = await client.patch(
+        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        cookies=auth_cookies,
+        json={"title": "Attempt"},
+    )
+
+    assert response.status_code == 404
