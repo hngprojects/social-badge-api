@@ -19,7 +19,12 @@ from app.dependencies import CurrentUser, DBSession
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.schemas.template import (
     CreateTemplateInstanceRequest,
+    DuplicateTemplateResponse,
+    EditTemplateRequest,
     LogoUploadResponse,
+    OrganiserTemplateDetailResponse,
+    OrganiserTemplateListResponse,
+    OrganiserTemplateSummary,
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
     PublicParticipantPageResponse,
@@ -28,8 +33,12 @@ from app.schemas.template import (
 )
 from app.services.template import (
     create_template_instance,
+    delete_organiser_template,
+    duplicate_template,
+    edit_organiser_template,
     get_platform_template,
     get_public_template_by_slug,
+    list_organiser_templates,
     list_platform_templates,
     publish_template,
     unpublish_template,
@@ -115,6 +124,96 @@ async def create_instance(
             platform_template_id=instance.platform_template_id,
             organiser_id=instance.organiser_id,
             created_at=instance.created_at,
+        ),
+    )
+
+
+@router.get(
+    "/organizer/instances",
+    response_model=SuccessResponse[OrganiserTemplateListResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List organiser template instances",
+    description=(
+        "Returns a paginated list of all template instances owned by the "
+        "authenticated organiser. Soft-deleted templates are excluded. "
+        "Each item includes a computed status field ('draft' or 'published'). "
+        "Results are ordered by most recently updated first."
+    ),
+    responses={
+        200: {
+            "description": "Template instances retrieved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Template instances retrieved successfully.",
+                        "data": {
+                            "templates": [
+                                {
+                                    "id": "019e1b66-c4...fe4f9c84",
+                                    "title": "HNG Tech Fest 2026",
+                                    "platform_template_id": "019e1b66-c4...fe4f9c00",
+                                    "thumbnail_url": None,
+                                    "is_published": True,
+                                    "status": "published",
+                                    "share_slug": "abcdef123456",
+                                    "published_at": "2026-05-20T10:00:00Z",
+                                    "created_at": "2026-05-18T09:00:00Z",
+                                    "updated_at": "2026-05-20T10:00:00Z",
+                                }
+                            ],
+                            "total": 1,
+                            "page": 1,
+                            "limit": 20,
+                            "prev": None,
+                            "next": None,
+                        },
+                    }
+                }
+            },
+        },
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def list_instances(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1, description="Page number (1-based)."),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
+) -> SuccessResponse[OrganiserTemplateListResponse]:
+    """Return paginated template instances for the authenticated organiser."""
+    templates, total = await list_organiser_templates(
+        session=session,
+        organiser_id=current_user.id,
+        page=page,
+        limit=limit,
+    )
+
+    base_url = "/api/v1/templates/organizer/instances"
+
+    prev_link = None
+    if page > 1:
+        prev_link = f"{base_url}?page={page - 1}&limit={limit}"
+
+    next_link = None
+    if page * limit < total:
+        next_link = f"{base_url}?page={page + 1}&limit={limit}"
+
+    return SuccessResponse(
+        message="Template instances retrieved successfully.",
+        data=OrganiserTemplateListResponse(
+            templates=[
+                OrganiserTemplateSummary.model_validate(org_template)
+                for org_template in templates
+            ],
+            total=total,
+            page=page,
+            limit=limit,
+            prev=prev_link,
+            next=next_link,
         ),
     )
 
@@ -219,6 +318,161 @@ async def unpublish(
     return SuccessResponse(
         message="Template unpublished successfully.",
         data=PublishedTemplateResponse.model_validate(template),
+    )
+
+
+@router.post(
+    "/organizer/{template_id}/duplicate",
+    response_model=SuccessResponse[DuplicateTemplateResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Duplicate an organiser template",
+    description=(
+        "Creates a draft copy of the organiser's template. "
+        "The copy receives a new unique ID, inherits all configuration "
+        "fields and hashtags from the original, and starts in an unpublished state. "
+        "The original template is not modified."
+    ),
+    responses={
+        201: {"description": "Draft copy created."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the template owner."},
+        404: {"model": ErrorResponse, "description": "Template not found."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("30/minute")
+async def duplicate(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    template_id: UUID,
+) -> SuccessResponse[DuplicateTemplateResponse]:
+    """Duplicate an organiser template into a new draft."""
+    try:
+        copy = await duplicate_template(
+            session=session,
+            organiser_id=current_user.id,
+            template_id=template_id,
+        )
+    except OrganiserTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+    except NotTemplateOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this template.",
+        ) from exc
+
+    return SuccessResponse(
+        message="Template duplicated successfully.",
+        data=DuplicateTemplateResponse.model_validate(copy),
+    )
+
+
+@router.delete(
+    "/organizer/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an organiser template",
+    description=(
+        "Permanently removes the organiser template and all associated records "
+        "(badges, hashtags) from the database. The Cloudinary logo and any "
+        "generated badge image assets are also deleted on a best-effort basis — "
+        "a Cloudinary failure does not cause the request to fail. "
+        "This action is irreversible."
+    ),
+    responses={
+        204: {"description": "Template deleted successfully."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the template owner."},
+        404: {"model": ErrorResponse, "description": "Template not found."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("30/minute")
+async def delete_template(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    template_id: UUID,
+) -> None:
+    """Permanently delete an organiser template and its Cloudinary assets."""
+    try:
+        await delete_organiser_template(
+            session=session,
+            organiser_id=current_user.id,
+            template_id=template_id,
+        )
+    except OrganiserTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+    except NotTemplateOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this template.",
+        ) from exc
+
+
+@router.patch(
+    "/organizer/{template_id}",
+    response_model=SuccessResponse[OrganiserTemplateDetailResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Edit an organiser template",
+    description=(
+        "Partially updates an organiser template. Only fields present in the "
+        "request body are written to the database — absent fields are left "
+        "unchanged. To clear a nullable field send it explicitly as null. "
+        "To replace hashtags include the full desired list; omit the key "
+        "entirely to leave hashtags unchanged. Returns the full updated template."
+    ),
+    responses={
+        200: {"description": "Template updated successfully."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the template owner."},
+        404: {"model": ErrorResponse, "description": "Template not found."},
+        422: {"model": ErrorResponse, "description": "Validation error."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("30/minute")
+async def edit_template(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    template_id: UUID,
+    payload: EditTemplateRequest,
+) -> SuccessResponse[OrganiserTemplateDetailResponse]:
+    """Apply a partial update to an organiser template."""
+    field_updates = payload.model_dump(exclude_unset=True)
+    new_hashtags: list[str] | None = field_updates.pop("hashtags", None)
+    update_hashtags: bool = "hashtags" in payload.model_fields_set
+
+    try:
+        template = await edit_organiser_template(
+            session=session,
+            organiser_id=current_user.id,
+            template_id=template_id,
+            field_updates=field_updates,
+            new_hashtags=new_hashtags,
+            update_hashtags=update_hashtags,
+        )
+    except OrganiserTemplateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found.",
+        ) from exc
+    except NotTemplateOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this template.",
+        ) from exc
+
+    return SuccessResponse(
+        message="Template updated successfully.",
+        data=OrganiserTemplateDetailResponse.model_validate(template),
     )
 
 

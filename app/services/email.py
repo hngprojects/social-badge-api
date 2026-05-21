@@ -60,7 +60,9 @@ def _build_notification_html(
     subject: str,
     message: str,
 ) -> str:
-    escaped_full_name = html.escape(f"{first_name} {last_name}".strip() if last_name else first_name)
+    escaped_full_name = html.escape(
+        f"{first_name} {last_name}".strip() if last_name else first_name
+    )
     escaped_email = html.escape(email)
     escaped_subject = html.escape(subject)
     escaped_message = html.escape(message)
