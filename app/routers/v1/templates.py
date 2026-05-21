@@ -21,6 +21,8 @@ from app.schemas.template import (
     CreateTemplateInstanceRequest,
     DuplicateTemplateResponse,
     LogoUploadResponse,
+    OrganiserTemplateListResponse,
+    OrganiserTemplateSummary,
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
     PublicParticipantPageResponse,
@@ -32,6 +34,7 @@ from app.services.template import (
     duplicate_template,
     get_platform_template,
     get_public_template_by_slug,
+    list_organiser_templates,
     list_platform_templates,
     publish_template,
     unpublish_template,
@@ -117,6 +120,96 @@ async def create_instance(
             platform_template_id=instance.platform_template_id,
             organiser_id=instance.organiser_id,
             created_at=instance.created_at,
+        ),
+    )
+
+
+@router.get(
+    "/organizer/instances",
+    response_model=SuccessResponse[OrganiserTemplateListResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List organiser template instances",
+    description=(
+        "Returns a paginated list of all template instances owned by the "
+        "authenticated organiser. Soft-deleted templates are excluded. "
+        "Each item includes a computed status field ('draft' or 'published'). "
+        "Results are ordered by most recently updated first."
+    ),
+    responses={
+        200: {
+            "description": "Template instances retrieved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Template instances retrieved successfully.",
+                        "data": {
+                            "templates": [
+                                {
+                                    "id": "019e1b66-c4...fe4f9c84",
+                                    "title": "HNG Tech Fest 2026",
+                                    "platform_template_id": "019e1b66-c4...fe4f9c00",
+                                    "thumbnail_url": None,
+                                    "is_published": True,
+                                    "status": "published",
+                                    "share_slug": "abcdef123456",
+                                    "published_at": "2026-05-20T10:00:00Z",
+                                    "created_at": "2026-05-18T09:00:00Z",
+                                    "updated_at": "2026-05-20T10:00:00Z",
+                                }
+                            ],
+                            "total": 1,
+                            "page": 1,
+                            "limit": 20,
+                            "prev": None,
+                            "next": None,
+                        },
+                    }
+                }
+            },
+        },
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def list_instances(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(default=1, ge=1, description="Page number (1-based)."),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
+) -> SuccessResponse[OrganiserTemplateListResponse]:
+    """Return paginated template instances for the authenticated organiser."""
+    templates, total = await list_organiser_templates(
+        session=session,
+        organiser_id=current_user.id,
+        page=page,
+        limit=limit,
+    )
+
+    base_url = "/api/v1/templates/organizer/instances"
+
+    prev_link = None
+    if page > 1:
+        prev_link = f"{base_url}?page={page - 1}&limit={limit}"
+
+    next_link = None
+    if page * limit < total:
+        next_link = f"{base_url}?page={page + 1}&limit={limit}"
+
+    return SuccessResponse(
+        message="Template instances retrieved successfully.",
+        data=OrganiserTemplateListResponse(
+            templates=[
+                OrganiserTemplateSummary.model_validate(org_template)
+                for org_template in templates
+            ],
+            total=total,
+            page=page,
+            limit=limit,
+            prev=prev_link,
+            next=next_link,
         ),
     )
 

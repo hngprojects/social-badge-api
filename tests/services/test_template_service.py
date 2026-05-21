@@ -1,13 +1,15 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotTemplateOwnerError, OrganiserTemplateNotFoundError
+from app.core.security import hash_password
 from app.models import OrganiserTemplate, PlatformTemplate, User
 from app.models.templates import TemplateHashtag
-from app.services.template import duplicate_template
+from app.services.template import duplicate_template, list_organiser_templates
 
 
 @pytest.fixture
@@ -25,8 +27,6 @@ async def platform_template(db_session: AsyncSession) -> PlatformTemplate:
 
 @pytest.fixture
 async def organiser(db_session: AsyncSession) -> User:
-    from app.core.security import hash_password
-
     user = User(
         first_name="Organiser",
         last_name="One",
@@ -149,8 +149,8 @@ async def test_duplicate_copies_all_config_fields(
     assert copy.default_caption == source_template.default_caption
     assert copy.destination_link == source_template.destination_link
     assert copy.thumbnail_url == source_template.thumbnail_url
-    assert copy.logo_url == source_template.logo_url
-    assert copy.logo_public_id == source_template.logo_public_id
+    assert copy.logo_url is None
+    assert copy.logo_public_id is None
     assert copy.access_type == source_template.access_type
     assert copy.platform_template_id == source_template.platform_template_id
     assert copy.organiser_id == source_template.organiser_id
@@ -319,3 +319,259 @@ async def test_duplicate_raises_not_owner_for_other_user(
             organiser_id=uuid.uuid4(),
             template_id=source_template.id,
         )
+
+
+async def _make_template(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+    *,
+    title: str = "Event",
+    is_published: bool = False,
+    deleted: bool = False,
+    updated_at_offset_seconds: int = 0,
+) -> OrganiserTemplate:
+    now = datetime.now(UTC)
+    template = OrganiserTemplate(
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+        title=title,
+        canvas_data={"layout_id": "v1"},
+        is_published=is_published,
+        share_slug=f"slug-{title.lower().replace(' ', '-')}" if is_published else None,
+        deleted_at=now if deleted else None,
+    )
+    db_session.add(template)
+    await db_session.commit()
+    await db_session.refresh(template)
+
+    if updated_at_offset_seconds:
+        from sqlalchemy import update as sa_update
+
+        await db_session.execute(
+            sa_update(OrganiserTemplate)
+            .where(OrganiserTemplate.id == template.id)
+            .values(updated_at=now + timedelta(seconds=updated_at_offset_seconds))
+        )
+        await db_session.commit()
+        await db_session.refresh(template)
+
+    return template
+
+
+async def test_returns_empty_list_when_no_templates(
+    db_session: AsyncSession,
+    organiser: User,
+) -> None:
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert templates == []
+    assert total == 0
+
+
+async def test_returns_all_templates_for_organiser(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(3):
+        await _make_template(
+            db_session, organiser, platform_template, title=f"Event {i}"
+        )
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert total == 3
+    assert len(templates) == 3
+
+
+async def test_excludes_soft_deleted_templates(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(db_session, organiser, platform_template, title="Live Event")
+    await _make_template(
+        db_session, organiser, platform_template, title="Deleted Event", deleted=True
+    )
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert total == 1
+    assert templates[0].title == "Live Event"
+
+
+async def test_excludes_other_organisers_templates(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    other = User(
+        first_name="Other",
+        last_name="Organiser",
+        email="other-list@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    await _make_template(db_session, organiser, platform_template, title="My Event")
+    await _make_template(db_session, other, platform_template, title="Their Event")
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert total == 1
+    assert templates[0].title == "My Event"
+
+
+async def test_returns_zero_for_unknown_organiser(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(db_session, organiser, platform_template, title="Some Event")
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=uuid.uuid4(),
+    )
+
+    assert total == 0
+    assert templates == []
+
+
+async def test_orders_by_most_recently_updated_first(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(
+        db_session,
+        organiser,
+        platform_template,
+        title="Older",
+        updated_at_offset_seconds=0,
+    )
+    await _make_template(
+        db_session,
+        organiser,
+        platform_template,
+        title="Newer",
+        updated_at_offset_seconds=60,
+    )
+
+    templates, _ = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert templates[0].title == "Newer"
+    assert templates[1].title == "Older"
+
+
+async def test_includes_both_published_and_draft_templates(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(
+        db_session,
+        organiser,
+        platform_template,
+        title="Draft Event",
+        is_published=False,
+    )
+    await _make_template(
+        db_session,
+        organiser,
+        platform_template,
+        title="Published Event",
+        is_published=True,
+    )
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+    )
+
+    assert total == 2
+    statuses = {t.title: t.is_published for t in templates}
+    assert statuses["Draft Event"] is False
+    assert statuses["Published Event"] is True
+
+
+async def test_pagination_total_reflects_full_count(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(5):
+        await _make_template(
+            db_session, organiser, platform_template, title=f"Event {i}"
+        )
+
+    _, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+        page=1,
+        limit=2,
+    )
+
+    assert total == 5
+
+
+async def test_pagination_page_two_returns_correct_slice(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    for i in range(5):
+        await _make_template(
+            db_session,
+            organiser,
+            platform_template,
+            title=f"Event {i}",
+            updated_at_offset_seconds=i * 10,
+        )
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+        page=2,
+        limit=2,
+    )
+
+    assert total == 5
+    assert len(templates) == 2
+
+
+async def test_pagination_beyond_last_page_returns_empty(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(db_session, organiser, platform_template, title="Only Event")
+
+    templates, total = await list_organiser_templates(
+        session=db_session,
+        organiser_id=organiser.id,
+        page=99,
+        limit=20,
+    )
+
+    assert total == 1
+    assert templates == []

@@ -345,3 +345,44 @@ async def duplicate_template(
         organiser_id,
     )
     return copy
+
+
+async def list_organiser_templates(
+    session: AsyncSession,
+    organiser_id: UUID,
+    page: int = 1,
+    limit: int = 20,
+) -> tuple[list[OrganiserTemplate], int]:
+    base_conditions = (
+        OrganiserTemplate.organiser_id == organiser_id,
+        OrganiserTemplate.deleted_at.is_(None),
+    )
+
+    count_result = await session.execute(
+        select(func.count(OrganiserTemplate.id)).where(*base_conditions)
+    )
+    total = count_result.scalar_one()
+
+    stmt = (
+        select(OrganiserTemplate)
+        .where(*base_conditions)
+        .order_by(
+            OrganiserTemplate.updated_at.desc().nulls_last(),
+            OrganiserTemplate.created_at.desc().nulls_last(),
+        )
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    templates = list(result.scalars().all())
+
+    logger.debug(
+        "list_organiser_templates: organiser=%s page=%d limit=%d "
+        "returned %d of %d total",
+        organiser_id,
+        page,
+        limit,
+        len(templates),
+        total,
+    )
+    return templates, total
