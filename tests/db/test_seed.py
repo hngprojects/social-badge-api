@@ -161,6 +161,47 @@ async def test_seed_platform_templates_logs_count_on_insert(
     )
 
 
+@pytest.mark.usefixtures("patched_session_local")
+async def test_seed_platform_templates_deletes_legacy_templates(
+    db_session: AsyncSession,
+) -> None:
+    legacy_template_1 = PlatformTemplate(
+        title="Web3 Summit",
+        category="festivals",
+        canvas_data={"layout": "old"},
+        thumbnail_url=None,
+    )
+    legacy_template_2 = PlatformTemplate(
+        title="Men's Summit 2026",
+        category="conferences",
+        canvas_data={"layout": "old_mens"},
+        thumbnail_url=None,
+    )
+    non_legacy_template = PlatformTemplate(
+        title="Creative Custom",
+        category="Design",
+        canvas_data={"layout": "custom"},
+        thumbnail_url=None,
+    )
+    db_session.add_all([legacy_template_1, legacy_template_2, non_legacy_template])
+    await db_session.commit()
+
+    await seed_platform_templates()
+
+    result = await db_session.execute(select(PlatformTemplate))
+    templates = {t.title: t for t in result.scalars().all()}
+
+    assert "Web3 Summit" not in templates
+    assert "Men's Summit 2026" not in templates
+
+    assert "Creative Custom" in templates
+    assert templates["Creative Custom"].canvas_data == {"layout": "custom"}
+
+    assert len(templates) == len(PLATFORM_TEMPLATES_SEED) + 1
+    for entry in PLATFORM_TEMPLATES_SEED:
+        assert entry["title"] in templates
+
+
 async def test_main_invokes_seed_platform_templates() -> None:
     with (
         patch(
