@@ -83,6 +83,19 @@ class PublicParticipantPageResponse(BaseModel):
     )
 
 
+class DuplicateTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID = Field(..., description="ID of the new draft template copy.")
+    title: str = Field(..., description="Title of the template copy.")
+    platform_template_id: UUID = Field(
+        ..., description="Platform template the copy is based on."
+    )
+    organiser_id: UUID = Field(..., description="Owner of the copy.")
+    is_published: bool = Field(..., description="Always False for a new copy.")
+    created_at: datetime = Field(..., description="When the copy was created.")
+
+
 class PlatformTemplateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

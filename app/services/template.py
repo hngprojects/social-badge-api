@@ -19,6 +19,7 @@ from app.core.exceptions import (
 )
 from app.core.slug import generate_share_slug
 from app.models import OrganiserTemplate, PlatformTemplate
+from app.models.templates import TemplateHashtag
 from app.services.cloudinary import delete_logo, upload_logo
 
 logger = logging.getLogger(__name__)
@@ -291,3 +292,56 @@ async def get_platform_template(
         raise PlatformTemplateNotFoundError
 
     return template
+
+
+async def duplicate_template(
+    session: AsyncSession,
+    organiser_id: UUID,
+    template_id: UUID,
+) -> OrganiserTemplate:
+    result = await session.execute(
+        select(OrganiserTemplate)
+        .options(selectinload(OrganiserTemplate.hashtags))
+        .where(
+            OrganiserTemplate.id == template_id,
+            OrganiserTemplate.deleted_at.is_(None),
+        )
+    )
+    original = result.scalars().first()
+    if original is None:
+        raise OrganiserTemplateNotFoundError
+
+    if original.organiser_id != organiser_id:
+        raise NotTemplateOwnerError
+
+    copy = OrganiserTemplate(
+        organiser_id=organiser_id,
+        platform_template_id=original.platform_template_id,
+        title=f"{original.title} (Copy)",
+        canvas_data=original.canvas_data,
+        default_caption=original.default_caption,
+        destination_link=original.destination_link,
+        thumbnail_url=original.thumbnail_url,
+        logo_url=None,
+        logo_public_id=None,
+        access_type=original.access_type,
+        is_published=False,
+        share_slug=None,
+        published_at=None,
+    )
+    session.add(copy)
+    await session.flush()
+
+    for tag in original.hashtags:
+        session.add(TemplateHashtag(template_id=copy.id, hashtag=tag.hashtag))
+
+    await session.commit()
+    await session.refresh(copy)
+
+    logger.info(
+        "Duplicated template %s as %s for organiser %s",
+        template_id,
+        copy.id,
+        organiser_id,
+    )
+    return copy
