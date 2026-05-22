@@ -96,6 +96,7 @@ async def seed_platform_templates() -> None:
             "Men's Summit 2026",
             "Harvesta 2026",
             "Reddit Summit",
+            "Reddit Summit Badge",
             "Community Connect",
             "Open Source Day",
             "Bootcamp Badge",
