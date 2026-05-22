@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     VERIFICATION_TOKEN_TTL_MINUTES: int = 30
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 30
 
-    COOKIE_SECURE: bool = False
-    COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "none"
     ACCESS_COOKIE: str = "access_token"
     REFRESH_COOKIE: str = "refresh_token"
     COOKIE_DOMAIN: str = ""

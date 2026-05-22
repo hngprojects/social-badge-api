@@ -512,8 +512,9 @@ async def test_upload_profile_photo_file_too_large(
     # Login
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    # Create a file larger than 10 MB
-    large_image_data = b"\x89PNG\r\n\x1a\n" * (11 * 1024 * 1024)
+    # Create a file just over 10 MB limit to test boundary condition
+    # PNG magic bytes + padding to exceed limit by 1 byte
+    large_image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024 * 1024 + 1)
 
     response = await client.put(
         "/api/v1/profile/photo",

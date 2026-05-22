@@ -13,16 +13,21 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_cloudinary_public_id(url: str) -> str | None:
-    """Extract the public_id from a Cloudinary URL.
+    """Extract and normalize the public_id from a Cloudinary URL.
     
     Cloudinary URLs follow the pattern:
-    https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}
+    https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{ext}
+    
+    This function extracts the public_id and normalizes it by:
+    - Removing the version segment (v{digits}/)
+    - Removing the file extension
+    - Preserving folder paths within the public_id
     
     Args:
         url: The Cloudinary URL string.
     
     Returns:
-        The public_id string if successfully extracted, None otherwise.
+        The normalized public_id string if successfully extracted, None otherwise.
     """
     try:
         parsed = urlparse(url)
@@ -32,9 +37,26 @@ def _extract_cloudinary_public_id(url: str) -> str | None:
         try:
             upload_index = path_parts.index("upload")
             if upload_index + 1 < len(path_parts):
-                # Join remaining parts in case public_id contains slashes
-                public_id = "/".join(path_parts[upload_index + 1 :])
-                # URL decode in case of special characters
+                parts = path_parts[upload_index + 1 :]
+                
+                # Remove the version segment (e.g., "v1234567890")
+                # Cloudinary URLs include /v{digits}/ after /upload/
+                if parts and parts[0].startswith("v") and parts[0][1:].isdigit():
+                    parts = parts[1:]
+                
+                # Ensure we still have parts after removing version
+                if not parts:
+                    return None
+                
+                # Remove the file extension from the last part
+                # The public_id is everything before the final extension
+                last_part = parts[-1]
+                if "." in last_part:
+                    # Remove extension but preserve the filename
+                    parts[-1] = last_part.rsplit(".", 1)[0]
+                
+                # Join remaining parts and URL decode
+                public_id = "/".join(parts)
                 return unquote(public_id)
         except ValueError:
             # /upload/ not found in path
@@ -53,7 +75,8 @@ async def update_profile_photo(
     """Update a user's profile photo.
     
     Uploads the new photo to Cloudinary and updates the user's profile_photo_url.
-    If the user had a previous photo, it is deleted from Cloudinary.
+    If the user had a previous photo, it is deleted from Cloudinary after the
+    new upload and database update succeed.
     
     Args:
         session: The database session.
@@ -66,28 +89,32 @@ async def update_profile_photo(
     Raises:
         CloudinaryUploadError: If the upload to Cloudinary fails.
     """
-    # Delete the old profile photo if it exists
-    if user.profile_photo_url:
-        old_public_id = _extract_cloudinary_public_id(user.profile_photo_url)
-        if old_public_id:
-            try:
-                await delete_asset(old_public_id)
-                logger.info(f"Deleted old profile photo for user {user.id}: {old_public_id}")
-            except CloudinaryUploadError as exc:
-                logger.warning(
-                    f"Failed to delete old profile photo from Cloudinary for user {user.id}: {exc}"
-                )
-                # Continue with upload anyway
-    
-    # Upload the new profile photo using existing upload_logo
+    # Extract the old photo public_id, but don't delete it yet
+    old_public_id = (
+        _extract_cloudinary_public_id(user.profile_photo_url)
+        if user.profile_photo_url
+        else None
+    )
+
+    # Upload the new profile photo first (this may raise CloudinaryUploadError)
     url, public_id = await upload_logo(photo_data)
     user.profile_photo_url = url
     
+    # Update the database
     session.add(user)
     await session.commit()
     await session.refresh(user)
     
     logger.info(f"Updated profile photo for user {user.id}: {public_id}")
+    
+    # Best-effort cleanup of old asset after successful update
+    # If deletion fails, the old asset remains but the user has already moved on
+    if old_public_id:
+        try:
+            await delete_asset(old_public_id)
+            logger.info(f"Deleted old profile photo for user {user.id}: {old_public_id}")
+        except CloudinaryUploadError as exc:
+            logger.warning("Failed to delete old profile photo for user %s: %s", user.id, exc)
     
     return user
 

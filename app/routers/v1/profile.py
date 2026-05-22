@@ -20,6 +20,81 @@ router = APIRouter()
 # Max file size: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
+# Chunk size for reading files (8 KB)
+CHUNK_SIZE = 8 * 1024
+
+# Magic bytes (file signatures) for supported image formats
+# These are the first few bytes that identify the file type
+IMAGE_MAGIC_BYTES = {
+    b"\xff\xd8\xff": "image/jpeg",  # JPEG
+    b"\x89\x50\x4e\x47": "image/png",  # PNG
+    b"\x47\x49\x46\x38": "image/gif",  # GIF (GIF87a and GIF89a)
+}
+
+
+def _validate_image_content(content: bytes) -> str:
+    """Validate image content by checking magic bytes (file signature).
+    
+    Args:
+        content: The file content bytes to validate.
+        
+    Returns:
+        The MIME type of the validated image.
+        
+    Raises:
+        HTTPException: If the content doesn't match supported image formats.
+    """
+    if len(content) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is too small to be a valid image",
+        )
+    
+    # Check magic bytes to determine actual file type
+    for magic_bytes, mime_type in IMAGE_MAGIC_BYTES.items():
+        if content.startswith(magic_bytes):
+            return mime_type
+    
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid file format. Only JPEG, PNG, and GIF are supported.",
+    )
+
+
+async def _read_file_with_size_check(file: UploadFile, max_size: int) -> bytes:
+    """Read file in chunks while enforcing size limit.
+    
+    Reads the file in chunks and validates the total size does not exceed
+    max_size. Fails early if size limit is exceeded to prevent memory exhaustion.
+    
+    Args:
+        file: The uploaded file to read.
+        max_size: Maximum allowed file size in bytes.
+        
+    Returns:
+        The complete file content.
+        
+    Raises:
+        HTTPException: If the file size exceeds the limit.
+    """
+    content = b""
+    
+    while True:
+        chunk = await file.read(CHUNK_SIZE)
+        if not chunk:
+            break
+        
+        content += chunk
+        
+        # Check size limit early to prevent memory exhaustion
+        if len(content) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File size exceeds maximum allowed size of {max_size / 1024 / 1024:.0f} MB",
+            )
+    
+    return content
+
 
 @router.get(
     "/",
@@ -171,21 +246,22 @@ async def upload_profile_photo_endpoint(
     
     Accepts image files and uploads them to Cloudinary.
     The previous profile photo is automatically deleted if it exists.
-    """
-    # Validate file size
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size exceeds maximum allowed size of {MAX_FILE_SIZE / 1024 / 1024:.0f} MB",
-        )
     
-    # Validate file type
-    if file.content_type not in ["image/jpeg", "image/png", "image/gif"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file format. Only JPEG, PNG, and GIF are supported.",
-        )
+    Security measures:
+    - File size is validated during streaming to prevent memory exhaustion
+    - File content is validated by magic bytes to prevent spoofed formats
+    """
+    # Read file in chunks with size limit enforcement
+    content = await _read_file_with_size_check(file, MAX_FILE_SIZE)
+    
+    # Validate file type by inspecting actual content (magic bytes)
+    # This prevents clients from spoofing the content_type header
+    actual_mime_type = _validate_image_content(content)
+    
+    logger.info(
+        f"Processing profile photo upload for user {current_user.id}: "
+        f"claimed={file.content_type}, actual={actual_mime_type}"
+    )
     
     try:
         updated_user = await update_profile_photo(
