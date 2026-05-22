@@ -41,6 +41,7 @@ VALID_CATEGORIES = frozenset(
         "bootcamp",
         "meetups",
         "speakers",
+        "summit",
         "trending",
     }
 )
