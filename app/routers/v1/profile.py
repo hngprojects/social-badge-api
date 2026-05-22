@@ -77,23 +77,26 @@ async def _read_file_with_size_check(file: UploadFile, max_size: int) -> bytes:
     Raises:
         HTTPException: If the file size exceeds the limit.
     """
-    content = b""
+    chunks: list[bytes] = []
+    total_size = 0
     
     while True:
         chunk = await file.read(CHUNK_SIZE)
         if not chunk:
             break
         
-        content += chunk
+        total_size += len(chunk)
         
         # Check size limit early to prevent memory exhaustion
-        if len(content) > max_size:
+        if total_size > max_size:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"File size exceeds maximum allowed size of {max_size / 1024 / 1024:.0f} MB",
             )
+        
+        chunks.append(chunk)
     
-    return content
+    return b"".join(chunks)
 
 
 @router.get(
