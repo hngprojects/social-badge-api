@@ -17,8 +17,8 @@ from sqlalchemy.pool import NullPool
 # Must be set before app imports: Settings() is constructed at import time
 # and raises ValidationError if SECRET_KEY is missing.
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
-os.environ.setdefault("COOKIE_SECURE", "False")  # Disable secure cookies for HTTP tests
-os.environ.setdefault("COOKIE_SAMESITE", "lax")  # Use lax samesite for tests
+os.environ["COOKIE_SECURE"] = "False"  # Disable secure cookies for HTTP tests
+os.environ["COOKIE_SAMESITE"] = "lax"  # Use lax samesite for tests
 
 from app.core.config import settings
 from app.db.redis import get_redis_client
