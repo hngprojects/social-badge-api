@@ -78,7 +78,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
         "title": "Dev Summit",
         "category": "conferences",
         "canvas_data": {
-            "layout_id": "name_role_dark_v1",
+            "layout_id": "name_role_dark_v2",
             "background": {
                 "type": "solid",
                 "color": "#1A1A2E",
