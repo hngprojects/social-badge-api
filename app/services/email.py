@@ -338,3 +338,30 @@ async def send_contact_confirmation(
             to_email,
             reference_id,
         )
+
+
+async def send_newsletter_welcome_email(*, to: str, unsubscribe_token: str) -> None:
+    html_content = email_templates.render(
+        "newsletter_welcome",
+        unsubscribe_token=unsubscribe_token,
+    )
+    params: resend.Emails.SendParams = {
+        "from": settings.RESEND_FROM_EMAIL,
+        "to": [to],
+        "subject": settings.NEWSLETTER_WELCOME_SUBJECT,
+        "html": html_content,
+    }
+    try:
+        await asyncio.to_thread(resend.Emails.send, params)
+    except resend.exceptions.ResendError:
+        logger.warning(
+            "Resend failed for newsletter welcome to %s, trying SMTP fallback", to
+        )
+        await _send_smtp_email(
+            to=to,
+            subject=settings.NEWSLETTER_WELCOME_SUBJECT,
+            html_content=html_content,
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error sending newsletter welcome to %s", to)
+        raise EmailDeliveryError(f"Failed to send newsletter welcome to {to}") from exc

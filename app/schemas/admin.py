@@ -18,6 +18,7 @@ _VALID_TEMPLATE_CATEGORIES: frozenset[str] = frozenset(
         "trending",
         "general",
         "event",
+        "summit",
         "updated event",
     }
 )
