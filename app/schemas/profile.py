@@ -1,9 +1,6 @@
-from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-
-from app.schemas.auth import UserResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UpdateProfileRequest(BaseModel):

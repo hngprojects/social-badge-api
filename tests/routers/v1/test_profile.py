@@ -353,12 +353,11 @@ async def test_delete_profile_rate_limit(
     profile_user: dict[str, str],
 ) -> None:
     """Test rate limiting on DELETE /profile endpoint."""
-    payload = profile_user
 
     # Make multiple login attempts and delete attempts
     for _ in range(5):
         # Create a new test user for each iteration
-        unique_email = f"profile_{uuid4()}@example.com"
+        f"profile_{uuid4()}@example.com"
         # We need to create and delete a user each time for the rate limit test
         # Since delete is destructive, this test is limited
 
