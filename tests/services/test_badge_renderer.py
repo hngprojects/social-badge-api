@@ -362,7 +362,7 @@ class TestFitText:
 
     def test_very_long_text_reduces_size(self) -> None:
         draw, fit = self._setup()
-        font, lines = fit(
+        font, _lines = fit(
             draw,
             "Adebayo Olanrewaju Adekunle Babatunde",
             "DM Sans",
@@ -731,7 +731,7 @@ class TestLayoutSpecsPopulated:
             assert 0 < spec.text_y_start_no_photo < 1, name
 
     def test_every_spec_has_parseable_text_color(self) -> None:
-        for name, spec in LAYOUT_SPECS.items():
+        for spec in LAYOUT_SPECS.values():
             _hex_to_rgb(spec.text_color)
 
     def test_every_spec_has_positive_padding(self) -> None:
