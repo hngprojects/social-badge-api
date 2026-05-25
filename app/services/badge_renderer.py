@@ -39,7 +39,40 @@ class LayoutSpec:
     padding: int
 
 
-LAYOUT_SPECS: dict[str, LayoutSpec] = {}
+LAYOUT_SPECS: dict[str, LayoutSpec] = {
+    "photo_gradient_v1": LayoutSpec(
+        photo_diameter_ratio=0.55,
+        photo_y_ratio=0.08,
+        text_y_start_ratio=0.60,
+        text_y_start_no_photo=0.35,
+        text_color="#FFFFFF",
+        padding=48,
+    ),
+    "dev_summit_dark_v1": LayoutSpec(
+        photo_diameter_ratio=0.50,
+        photo_y_ratio=0.10,
+        text_y_start_ratio=0.62,
+        text_y_start_no_photo=0.38,
+        text_color="#FFFFFF",
+        padding=48,
+    ),
+    "name_role_dark_v1": LayoutSpec(
+        photo_diameter_ratio=0.45,
+        photo_y_ratio=0.12,
+        text_y_start_ratio=0.58,
+        text_y_start_no_photo=0.30,
+        text_color="#FFFFFF",
+        padding=48,
+    ),
+    "next_gen_mint_v1": LayoutSpec(
+        photo_diameter_ratio=0.50,
+        photo_y_ratio=0.08,
+        text_y_start_ratio=0.60,
+        text_y_start_no_photo=0.35,
+        text_color="#1A1A1A",
+        padding=48,
+    ),
+}
 
 DEFAULT_SPEC = LayoutSpec(
     photo_diameter_ratio=0.55,
@@ -327,9 +360,54 @@ def _fetch_remote_image(url: str) -> bytes | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Field rendering
-# ---------------------------------------------------------------------------
+def _composite_photo(
+    img: Image.Image,
+    photo_data: bytes,
+    spec: LayoutSpec,
+) -> bool:
+    """Composite a circular participant photo onto the canvas.
+
+    Opens photo bytes, center-crops to a square, resizes to the layout's
+    photo diameter, applies a circular alpha mask, and pastes centered
+    horizontally at the layout's photo_y_ratio.
+
+    Returns True on success, False if the photo could not be decoded or
+    failed any safety check. Failures log a warning and continue; the
+    badge still renders without the photo.
+    """
+    diameter = int(img.width * spec.photo_diameter_ratio)
+    if diameter <= 0:
+        logger.warning("Photo diameter resolved to zero, skipping composite")
+        return False
+
+    y_offset = int(img.height * spec.photo_y_ratio)
+
+    try:
+        with Image.open(BytesIO(photo_data)) as raw:
+            raw.load()
+            photo = raw.convert("RGBA")
+    except Image.DecompressionBombError:
+        logger.warning("Participant photo exceeds pixel limit, skipping composite")
+        return False
+    except Exception:
+        logger.warning("Could not decode participant photo, skipping composite")
+        return False
+
+    side = min(photo.width, photo.height)
+    left = (photo.width - side) // 2
+    top = (photo.height - side) // 2
+    photo = photo.crop((left, top, left + side, top + side)).resize(
+        # pyrefly: ignore [missing-attribute]
+        (diameter, diameter),
+        Image.LANCZOS,
+    )
+    mask = Image.new("L", (diameter, diameter), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, diameter, diameter), fill=255)
+    photo.putalpha(mask)
+
+    x_offset = (img.width - diameter) // 2
+    img.paste(photo, (x_offset, y_offset), photo)
+    return True
 
 
 def _draw_fields(
@@ -384,8 +462,12 @@ def _draw_fields(
             else:
                 size = max(int(base_size * 0.6), 12)
                 bold = False
+        elif field_type == "participant_upload":
+            if photo_data is not None:
+                _composite_photo(img, photo_data, spec)
+            continue
         else:
-            # participant_upload (Commit 4) and unknown types: skip
+            # Unknown types: skip
             continue
 
         if not content:

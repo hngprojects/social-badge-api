@@ -707,3 +707,306 @@ class TestRenderBadgeWithText:
             participant_inputs={"participant_name": "Jane"},
         )
         assert result[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+class TestLayoutSpecsPopulated:
+    def test_all_four_layouts_present(self) -> None:
+        expected = {
+            "photo_gradient_v1",
+            "dev_summit_dark_v1",
+            "name_role_dark_v1",
+            "next_gen_mint_v1",
+        }
+        assert set(LAYOUT_SPECS.keys()) == expected
+
+    def test_every_spec_is_a_layout_spec(self) -> None:
+        for name, spec in LAYOUT_SPECS.items():
+            assert isinstance(spec, LayoutSpec), f"{name} is not a LayoutSpec"
+
+    def test_every_spec_has_valid_ratios(self) -> None:
+        for name, spec in LAYOUT_SPECS.items():
+            assert 0 < spec.photo_diameter_ratio < 1, name
+            assert 0 < spec.photo_y_ratio < 1, name
+            assert 0 < spec.text_y_start_ratio < 1, name
+            assert 0 < spec.text_y_start_no_photo < 1, name
+
+    def test_every_spec_has_parseable_text_color(self) -> None:
+        for name, spec in LAYOUT_SPECS.items():
+            _hex_to_rgb(spec.text_color)
+
+    def test_every_spec_has_positive_padding(self) -> None:
+        for name, spec in LAYOUT_SPECS.items():
+            assert spec.padding > 0, name
+
+    def test_next_gen_mint_uses_dark_text(self) -> None:
+        spec = LAYOUT_SPECS["next_gen_mint_v1"]
+        r, g, b = _hex_to_rgb(spec.text_color)
+        assert r < 100 and g < 100 and b < 100
+
+    def test_dark_layouts_use_light_text(self) -> None:
+        for name in ("photo_gradient_v1", "dev_summit_dark_v1", "name_role_dark_v1"):
+            spec = LAYOUT_SPECS[name]
+            r, g, b = _hex_to_rgb(spec.text_color)
+            assert r > 200 and g > 200 and b > 200, name
+
+
+def _make_photo_bytes(
+    width: int = 400,
+    height: int = 400,
+    color: tuple[int, int, int] = (255, 0, 0),
+) -> bytes:
+    """Build a PNG byte string of the given size and solid color."""
+    from io import BytesIO
+
+    photo = Image.new("RGB", (width, height), color)
+    buf = BytesIO()
+    photo.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestCompositePhoto:
+    def test_returns_true_on_success(self) -> None:
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        result = _composite_photo(img, _make_photo_bytes(), DEFAULT_SPEC)
+        assert result is True
+
+    def test_returns_false_on_corrupt_photo(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        with caplog.at_level(logging.WARNING, logger="app.services.badge_renderer"):
+            result = _composite_photo(img, b"not an image", DEFAULT_SPEC)
+
+        assert result is False
+        assert any("Could not decode" in r.message for r in caplog.records)
+
+    def test_image_untouched_on_decode_failure(self) -> None:
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _composite_photo(img, b"garbage", DEFAULT_SPEC)
+        assert img.getpixel((500, 500)) == (0, 0, 0)
+
+    def test_photo_pasted_at_center_horizontally(self) -> None:
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _composite_photo(img, _make_photo_bytes(color=(255, 0, 0)), DEFAULT_SPEC)
+        assert img.getpixel((500, 375)) == (255, 0, 0)
+
+    def test_photo_is_circular(self) -> None:
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _composite_photo(img, _make_photo_bytes(color=(255, 0, 0)), DEFAULT_SPEC)
+        assert img.getpixel((230, 105)) == (0, 0, 0)
+        assert img.getpixel((500, 375)) == (255, 0, 0)
+
+    def test_non_square_photo_center_cropped(self) -> None:
+        from app.services.badge_renderer import _composite_photo, DEFAULT_SPEC
+
+        wide_photo = _make_photo_bytes(width=800, height=400, color=(0, 0, 255))
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        result = _composite_photo(img, wide_photo, DEFAULT_SPEC)
+
+        assert result is True
+        assert img.getpixel((500, 375)) == (0, 0, 255)
+
+    def test_uses_layout_spec_ratios(self) -> None:
+        from app.services.badge_renderer import _composite_photo
+
+        custom_spec = LayoutSpec(
+            photo_diameter_ratio=0.20,
+            photo_y_ratio=0.05,
+            text_y_start_ratio=0.50,
+            text_y_start_no_photo=0.30,
+            text_color="#FFFFFF",
+            padding=48,
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _composite_photo(img, _make_photo_bytes(color=(0, 255, 0)), custom_spec)
+        assert img.getpixel((500, 150)) == (0, 255, 0)
+        assert img.getpixel((500, 375)) == (0, 0, 0)
+
+    def test_zero_diameter_returns_false(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+        from app.services.badge_renderer import _composite_photo
+
+        zero_spec = LayoutSpec(
+            photo_diameter_ratio=0.0,
+            photo_y_ratio=0.10,
+            text_y_start_ratio=0.50,
+            text_y_start_no_photo=0.30,
+            text_color="#FFFFFF",
+            padding=48,
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        with caplog.at_level(logging.WARNING, logger="app.services.badge_renderer"):
+            result = _composite_photo(img, _make_photo_bytes(), zero_spec)
+
+        assert result is False
+        assert any("diameter resolved to zero" in r.message for r in caplog.records)
+
+
+class TestDrawFieldsWithPhoto:
+    def _base_canvas(self, fields: list[dict]) -> dict:
+        return {
+            "typography": {"font_family": "DM Sans", "size_px": 42, "weight": "bold"},
+            "fields": fields,
+        }
+
+    def test_participant_upload_renders_photo_when_data_provided(self) -> None:
+        from app.services.badge_renderer import _draw_fields, DEFAULT_SPEC
+
+        canvas = self._base_canvas(
+            [
+                {"key": "participant_photo", "type": "participant_upload"},
+            ]
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _draw_fields(
+            img,
+            canvas,
+            {},
+            _make_photo_bytes(color=(255, 0, 0)),
+            DEFAULT_SPEC,
+        )
+        assert img.getpixel((500, 375)) == (255, 0, 0)
+
+    def test_participant_upload_skipped_when_no_photo_data(self) -> None:
+        from app.services.badge_renderer import _draw_fields, DEFAULT_SPEC
+
+        canvas = self._base_canvas(
+            [
+                {"key": "participant_photo", "type": "participant_upload"},
+            ]
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _draw_fields(img, canvas, {}, None, DEFAULT_SPEC)
+        assert img.getpixel((500, 375)) == (0, 0, 0)
+
+    def test_photo_and_text_render_in_correct_regions(self) -> None:
+        from app.services.badge_renderer import _draw_fields, DEFAULT_SPEC
+
+        canvas = self._base_canvas(
+            [
+                {"key": "participant_photo", "type": "participant_upload"},
+                {"key": "participant_name", "type": "participant_input"},
+            ]
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _draw_fields(
+            img,
+            canvas,
+            {"participant_name": "Jane Doe"},
+            _make_photo_bytes(color=(255, 0, 0)),
+            DEFAULT_SPEC,
+        )
+        assert img.getpixel((500, 375)) == (255, 0, 0)
+        text_region = [
+            img.getpixel((x, y))
+            for x in range(200, 800, 30)
+            for y in range(620, 720, 10)
+        ]
+        assert any(px != (0, 0, 0) for px in text_region)
+
+    def test_invisible_photo_field_skipped(self) -> None:
+        from app.services.badge_renderer import _draw_fields, DEFAULT_SPEC
+
+        canvas = self._base_canvas(
+            [
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "visible": False,
+                },
+            ]
+        )
+
+        img = Image.new("RGB", (1000, 1000), (0, 0, 0))
+        _draw_fields(img, canvas, {}, _make_photo_bytes(), DEFAULT_SPEC)
+        assert img.getpixel((500, 375)) == (0, 0, 0)
+
+
+class TestRenderBadgeFullPipeline:
+    def test_renders_with_layout_id_resolves_to_layout_spec(self) -> None:
+        from io import BytesIO
+
+        result = render_badge(
+            canvas_data={
+                "layout_id": "photo_gradient_v1",
+                "background": {"type": "solid", "color": "#000000"},
+                "fields": [
+                    {"key": "participant_photo", "type": "participant_upload"},
+                    {"key": "participant_name", "type": "participant_input"},
+                ],
+                "output": {"width_px": 800, "height_px": 1000},
+            },
+            participant_inputs={"participant_name": "Jane"},
+            photo_data=_make_photo_bytes(color=(0, 0, 255)),
+        )
+
+        assert result[:8] == b"\x89PNG\r\n\x1a\n"
+        with Image.open(BytesIO(result)) as img:
+            img.load()
+            found_blue = False
+            for x in range(0, 800, 20):
+                for y in range(0, 1000, 20):
+                    px = img.getpixel((x, y))
+                    if px[2] > 200 and px[0] < 50:
+                        found_blue = True
+                        break
+                if found_blue:
+                    break
+            assert found_blue
+
+    def test_renders_without_photo_data(self) -> None:
+        from io import BytesIO
+
+        result = render_badge(
+            canvas_data={
+                "layout_id": "dev_summit_dark_v1",
+                "background": {"type": "solid", "color": "#1A1A2E"},
+                "fields": [
+                    {"key": "participant_photo", "type": "participant_upload"},
+                    {"key": "participant_name", "type": "participant_input"},
+                ],
+                "output": {"width_px": 800, "height_px": 1000},
+            },
+            participant_inputs={"participant_name": "Jane"},
+            photo_data=None,
+        )
+
+        assert result[:8] == b"\x89PNG\r\n\x1a\n"
+        with Image.open(BytesIO(result)) as img:
+            img.load()
+            assert img.size == (800, 1000)
+
+    def test_render_succeeds_even_when_photo_is_corrupt(self) -> None:
+        result = render_badge(
+            canvas_data={
+                "layout_id": "photo_gradient_v1",
+                "background": {"type": "solid", "color": "#000000"},
+                "fields": [
+                    {"key": "participant_photo", "type": "participant_upload"},
+                    {"key": "participant_name", "type": "participant_input"},
+                ],
+                "output": {"width_px": 800, "height_px": 1000},
+            },
+            participant_inputs={"participant_name": "Jane"},
+            photo_data=b"this is not a real photo",
+        )
+
+        assert result[:8] == b"\x89PNG\r\n\x1a\n"
