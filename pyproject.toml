@@ -52,8 +52,13 @@ select = ["E", "W", "F", "I", "UP", "B", "T20", "S", "ASYNC"]
 "alembic/versions/**" = ["E501"]
 
 [tool.uv]
-# arq<=0.28.0 declares redis[hiredis]<6, but it is compatible with redis v7 at runtime.
-# This override allows uv to resolve the conflict without downgrading redis.
+# arq==0.28.0 declares redis[hiredis]>=4.2.0,<6, but the redis-py v7 API that
+# arq uses (connection pools, scripting, pipeline) is backward-compatible with
+# v4/v5. The override-dependencies key tells uv to satisfy redis>=7.4.0 for the
+# whole project and ignore arq's declared upper bound during resolution.
+# Runtime safety is verified by the test suite (pytest) and confirmed by manual
+# import smoke-test: arq 0.28.0 + redis 7.4.0 both import and connect cleanly.
+# Revisit if arq releases a version that explicitly supports redis>=7.
 override-dependencies = ["redis>=7.4.0"]
 
 [tool.mypy]

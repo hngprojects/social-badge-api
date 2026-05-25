@@ -16,10 +16,13 @@ _NORMALISED_TYPES: dict[str, str] = {
 
 
 def normalise_content_type(content_type: str) -> str:
-    """Normalise a declared MIME type to its canonical form."""
-    return _NORMALISED_TYPES.get(
-        content_type.lower().strip(), content_type.lower().strip()
-    )
+    """Normalise a declared MIME type to its canonical form.
+
+    Strips MIME parameters (e.g. ``; charset=binary``) before lookup so that
+    values like ``image/jpeg; charset=binary`` resolve correctly.
+    """
+    base = content_type.split(";", 1)[0].lower().strip()
+    return _NORMALISED_TYPES.get(base, base)
 
 
 def sniff_mime(data: bytes) -> str | None:
