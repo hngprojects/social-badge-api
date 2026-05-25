@@ -56,9 +56,10 @@ select = ["E", "W", "F", "I", "UP", "B", "T20", "S", "ASYNC"]
 # arq uses (connection pools, scripting, pipeline) is backward-compatible with
 # v4/v5. The override-dependencies key tells uv to satisfy redis>=7.4.0 for the
 # whole project and ignore arq's declared upper bound during resolution.
-# Runtime safety is verified by the test suite (pytest) and confirmed by manual
-# import smoke-test: arq 0.28.0 + redis 7.4.0 both import and connect cleanly.
-# Revisit if arq releases a version that explicitly supports redis>=7.
+# Compatibility is assumed based on API inspection; no arq integration tests
+# exist yet. A full enqueue/execute/result test against redis>=7.4.0 will be
+# added in Commit 8 (queue infrastructure). Revisit if arq releases a version
+# that explicitly supports redis>=7.
 override-dependencies = ["redis>=7.4.0"]
 
 [tool.mypy]
