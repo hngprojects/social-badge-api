@@ -3,9 +3,9 @@
 This module owns the Pillow rendering pipeline. It reads canvas_data
 (stored as JSONB on OrganiserTemplate) and produces a PNG byte string.
 
-Field rendering (text, logo, photo compositing) lands in commits 3 and 4.
-This commit covers canvas setup, background rendering, and the render
-entry point.
+Commit 2 laid down canvas setup, background rendering, and the render
+entry point. Commit 3 adds text fitting, logo rendering, and field layout.
+Photo compositing lands in Commit 4.
 """
 
 from __future__ import annotations
@@ -193,9 +193,143 @@ def _draw_background(img: Image.Image, background: dict) -> None:
     ImageDraw.Draw(img).rectangle((0, 0, img.width, img.height), fill=rgb)
 
 
+# ---------------------------------------------------------------------------
+# Text fitting
+# ---------------------------------------------------------------------------
+
+
+def _fit_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font_family: str,
+    base_size: int,
+    *,
+    bold: bool,
+    max_width: int,
+) -> tuple[ImageFont.FreeTypeFont, list[str]]:
+    """Find a font size and line layout that fits ``text`` within ``max_width``.
+
+    Strategy:
+      1. Try the base size on a single line.
+      2. If it overflows, wrap at whitespace into two lines.
+      3. If still overflowing, reduce size by 20 percent and wrap again.
+
+    Returns the font to use and the list of lines to draw.
+    """
+    font = _load_font(font_family, base_size, bold=bold)
+    if draw.textlength(text, font=font) <= max_width:
+        return font, [text]
+
+    wrapped = _wrap_at_whitespace(text, draw, font, max_width)
+    if all(draw.textlength(line, font=font) <= max_width for line in wrapped):
+        return font, wrapped
+
+    smaller_size = max(int(base_size * 0.8), 12)
+    font = _load_font(font_family, smaller_size, bold=bold)
+    wrapped = _wrap_at_whitespace(text, draw, font, max_width)
+    return font, wrapped
+
+
+def _wrap_at_whitespace(
+    text: str,
+    draw: ImageDraw.ImageDraw,
+    font: ImageFont.FreeTypeFont,
+    max_width: int,
+) -> list[str]:
+    """Wrap ``text`` into at most two lines, splitting at whitespace.
+
+    Returns a single-line list when the text fits or has no whitespace to
+    split on; otherwise returns two lines balanced as evenly as possible.
+    """
+    words = text.split()
+    if len(words) < 2:
+        return [text]
+
+    best_split = 1
+    for i in range(1, len(words)):
+        first = " ".join(words[:i])
+        if draw.textlength(first, font=font) <= max_width:
+            best_split = i
+        else:
+            break
+
+    return [" ".join(words[:best_split]), " ".join(words[best_split:])]
+
+
+# ---------------------------------------------------------------------------
+# Logo rendering
+# ---------------------------------------------------------------------------
+
+
 def _draw_logo(img: Image.Image, logo_config: dict) -> None:
-    """Render the organiser logo. Implemented in commit 3."""
-    return None
+    """Fetch and paste the organiser logo onto the canvas.
+
+    Logo failures (network, decode, oversized) are logged and skipped so
+    the badge still renders without it. The logo is sized to 25 percent of
+    the canvas width with aspect ratio preserved, and positioned per
+    ``logo.position`` with a 48 px margin from the canvas edge.
+    """
+    url = logo_config.get("url")
+    if not url:
+        return
+
+    logo_bytes = _fetch_remote_image(url)
+    if logo_bytes is None:
+        return
+
+    try:
+        with Image.open(BytesIO(logo_bytes)) as raw:
+            raw.load()
+            logo = raw.convert("RGBA")
+    except Exception:
+        logger.warning("Could not decode logo from %s, skipping", url)
+        return
+
+    target_width = int(img.width * 0.25)
+    if logo.width == 0 or logo.height == 0:
+        logger.warning("Logo at %s has zero dimensions, skipping", url)
+        return
+    scale = target_width / logo.width
+    target_height = max(int(logo.height * scale), 1)
+    logo = logo.resize((target_width, target_height), Image.LANCZOS)
+
+    position = logo_config.get("position", "top-center")
+    margin = DEFAULT_SPEC.padding
+    y = margin
+    if position == "top-left":
+        x = margin
+    elif position == "top-right":
+        x = img.width - target_width - margin
+    else:  # top-center and any unknown value
+        x = (img.width - target_width) // 2
+
+    img.paste(logo, (x, y), logo)
+
+
+def _fetch_remote_image(url: str) -> bytes | None:
+    """Fetch a remote image with a 5-second timeout.
+
+    Returns the raw bytes on success or None on any failure (network,
+    timeout, non-2xx status). All failures are logged at warning level.
+
+    Stub for Commit 3 — Commit 8 will route this through the remote-image
+    circuit breaker and the shared validation helper in app/services/badge.
+    """
+    try:
+        import httpx
+
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.content
+    except Exception:
+        logger.warning("Failed to fetch remote image from %s, skipping", url)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Field rendering
+# ---------------------------------------------------------------------------
 
 
 def _draw_fields(
@@ -205,8 +339,72 @@ def _draw_fields(
     photo_data: bytes | None,
     spec: LayoutSpec,
 ) -> None:
-    """Walk canvas.fields and render each. Implemented in commits 3 and 4."""
-    return None
+    """Walk canvas.fields in order and draw static and participant_input fields.
+
+    Field rendering rules:
+      - ``visible: false`` fields are skipped.
+      - ``static`` fields use ``field.value`` rendered at 55 percent of base size.
+      - ``participant_input`` with key ``participant_name`` uses base size, bold.
+      - Other ``participant_input`` fields use 60 percent of base size.
+      - ``participant_upload`` is handled by _composite_photo (Commit 4).
+
+    Long text is wrapped or downsized via _fit_text.
+    """
+    fields = canvas.get("fields", [])
+    typography = canvas["typography"]
+    font_family = typography.get("font_family", "DM Sans")
+    base_size = int(typography.get("size_px", 42))
+    text_color = _hex_to_rgb(spec.text_color)
+
+    has_photo = photo_data is not None and any(
+        f.get("type") == "participant_upload" for f in fields
+    )
+    start_ratio = spec.text_y_start_ratio if has_photo else spec.text_y_start_no_photo
+    y_cursor = int(img.height * start_ratio)
+    max_text_width = int(img.width * 0.85)
+
+    draw = ImageDraw.Draw(img)
+
+    for field in fields:
+        if field.get("visible", True) is False:
+            continue
+
+        field_type = field.get("type")
+        field_key = field.get("key", "")
+
+        if field_type == "static":
+            content = str(field.get("value", ""))
+            size = max(int(base_size * 0.55), 12)
+            bold = False
+        elif field_type == "participant_input":
+            content = participant_inputs.get(field_key, "")
+            if field_key == "participant_name":
+                size = base_size
+                bold = True
+            else:
+                size = max(int(base_size * 0.6), 12)
+                bold = False
+        else:
+            # participant_upload (Commit 4) and unknown types: skip
+            continue
+
+        if not content:
+            continue
+
+        font, lines = _fit_text(
+            draw,
+            content,
+            font_family,
+            size,
+            bold=bold,
+            max_width=max_text_width,
+        )
+        line_spacing = int(size * 0.2)
+        for line in lines:
+            line_width = draw.textlength(line, font=font)
+            x = (img.width - int(line_width)) // 2
+            draw.text((x, y_cursor), line, font=font, fill=text_color)
+            y_cursor += size + line_spacing
 
 
 def render_badge(
