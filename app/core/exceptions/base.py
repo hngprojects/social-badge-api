@@ -101,3 +101,13 @@ class PublicTemplateNotFoundError(Exception):
     """Raised when a public slug does not resolve to a published template."""
 
     pass
+
+
+class BadgeRenderError(Exception):
+    """Raised when badge rendering fails in a way that prevents any output.
+
+    Optional asset failures (logo, participant photo) are non-fatal and log a
+    warning instead of raising this exception.
+    """
+
+    pass
