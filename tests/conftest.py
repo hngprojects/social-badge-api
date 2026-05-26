@@ -21,12 +21,12 @@ os.environ["COOKIE_SECURE"] = "False"  # Disable secure cookies for HTTP tests
 os.environ["COOKIE_SAMESITE"] = "lax"  # Use lax samesite for tests
 os.environ["COOKIE_DOMAIN"] = ""  # Keep auth cookies host-only in tests
 
+# Import all models to ensure they're registered with Base.metadata
+from app import models  # noqa
 from app.core.config import settings
 from app.db.redis import get_redis_client
 from app.db.session import get_session
 from app.main import app  # noqa: E402
-
-# Import all models to ensure they're registered with Base.metadata
 from app.models.base import Base
 
 

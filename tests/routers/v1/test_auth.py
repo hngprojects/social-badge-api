@@ -694,7 +694,7 @@ async def test_google_callback_success(
     )
 
     assert response.status_code == 307
-    assert response.headers["location"] == f"{settings.FRONTEND_URL}/coming-soon"
+    assert response.headers["location"] == f"{settings.FRONTEND_URL}/dashboard"
     mock_authenticate.assert_awaited_once_with(
         ANY,
         ANY,

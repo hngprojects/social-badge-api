@@ -10,20 +10,17 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import (
+    BadgeAlreadyPublishedError,
+    BadgeNotFoundError,
     CloudinaryUploadError,
-    NotTemplateOwnerError,
-    OrganiserTemplateNotFoundError,
+    NotBadgeOwnerError,
+    PlatformTemplateNotActiveError,
     PlatformTemplateNotFoundError,
-    PublicTemplateNotFoundError,
-    TemplateAlreadyPublishedError,
-    TemplateInstanceForbiddenError,
-    TemplateInstanceNotFoundError,
+    PublicBadgeNotFoundError,
 )
 from app.core.slug import generate_share_slug
-from app.models import OrganiserTemplate, PlatformTemplate
-from app.models.templates import TemplateHashtag
+from app.models import Badge, BadgeHashtag, PlatformTemplate
 from app.services.cloudinary import (
-    delete_asset,
     delete_logo,
     upload_logo,
 )
@@ -47,19 +44,24 @@ VALID_CATEGORIES = frozenset(
 )
 
 
-async def create_template_instance(
+async def create_badge(
     session: AsyncSession,
     organiser_id: UUID,
     platform_template_id: UUID,
-) -> OrganiserTemplate:
+) -> Badge:
     result = await session.execute(
-        select(PlatformTemplate).where(PlatformTemplate.id == platform_template_id)
+        select(PlatformTemplate).where(
+            PlatformTemplate.id == platform_template_id,
+        )
     )
     platform_template = result.scalars().first()
     if platform_template is None:
         raise PlatformTemplateNotFoundError
 
-    instance = OrganiserTemplate(
+    if not platform_template.is_active:
+        raise PlatformTemplateNotActiveError
+
+    instance = Badge(
         organiser_id=organiser_id,
         platform_template_id=platform_template_id,
         title=platform_template.title,
@@ -78,21 +80,19 @@ async def create_template_instance(
     return instance
 
 
-async def publish_template(
+async def publish_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
-) -> OrganiserTemplate:
-    result = await session.execute(
-        select(OrganiserTemplate).where(OrganiserTemplate.id == template_id)
-    )
+    id: UUID,
+) -> Badge:
+    result = await session.execute(select(Badge).where(Badge.id == id))
     template = result.scalars().first()
     if template is None or template.deleted_at is not None:
-        raise OrganiserTemplateNotFoundError
+        raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
     if template.is_published:
-        raise TemplateAlreadyPublishedError
+        raise BadgeAlreadyPublishedError
 
     now = datetime.now(UTC)
     if template.share_slug is None:
@@ -116,19 +116,17 @@ async def publish_template(
     return template
 
 
-async def unpublish_template(
+async def unpublish_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
-) -> OrganiserTemplate:
-    result = await session.execute(
-        select(OrganiserTemplate).where(OrganiserTemplate.id == template_id)
-    )
+    id: UUID,
+) -> Badge:
+    result = await session.execute(select(Badge).where(Badge.id == id))
     template = result.scalars().first()
     if template is None or template.deleted_at is not None:
-        raise OrganiserTemplateNotFoundError
+        raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     template.is_published = False
     template.published_at = None
@@ -139,32 +137,32 @@ async def unpublish_template(
     return template
 
 
-async def upload_template_logo(
+async def upload_badge_logo(
     session: AsyncSession,
-    instance_id: UUID,
+    id: UUID,
     organiser_id: UUID,
     image_data: bytes,
 ) -> str:
     """Upload a logo for a template instance and return the Cloudinary URL.
 
     Raises:
-        TemplateInstanceNotFoundError: if the instance does not exist.
-        TemplateInstanceForbiddenError: if the instance belongs to another organiser.
+        BadgeNotFoundError: if the instance does not exist.
+        NotBadgeOwnerError: if the instance belongs to another organiser.
         CloudinaryUploadError: if the Cloudinary upload fails.
     """
     result = await session.execute(
-        select(OrganiserTemplate).where(
-            OrganiserTemplate.id == instance_id,
-            OrganiserTemplate.deleted_at.is_(None),
+        select(Badge).where(
+            Badge.id == id,
+            Badge.deleted_at.is_(None),
         )
     )
     instance = result.scalars().first()
 
     if instance is None:
-        raise TemplateInstanceNotFoundError
+        raise BadgeNotFoundError
 
     if instance.organiser_id != organiser_id:
-        raise TemplateInstanceForbiddenError
+        raise NotBadgeOwnerError
 
     old_public_id = instance.logo_public_id
 
@@ -201,28 +199,28 @@ async def upload_template_logo(
 
     logger.info(
         "Uploaded logo for template instance %s (public_id=%s)",
-        instance_id,
+        id,
         public_id,
     )
     return logo_url
 
 
-async def get_public_template_by_slug(
+async def get_public_badge_by_slug(
     session: AsyncSession,
     slug: str,
-) -> OrganiserTemplate:
+) -> Badge:
     result = await session.execute(
-        select(OrganiserTemplate)
-        .options(selectinload(OrganiserTemplate.hashtags))
+        select(Badge)
+        .options(selectinload(Badge.hashtags))
         .where(
-            OrganiserTemplate.share_slug == slug,
-            OrganiserTemplate.is_published.is_(True),
-            OrganiserTemplate.deleted_at.is_(None),
+            Badge.share_slug == slug,
+            Badge.is_published.is_(True),
+            Badge.deleted_at.is_(None),
         )
     )
     template = result.scalars().first()
     if template is None:
-        raise PublicTemplateNotFoundError
+        raise PublicBadgeNotFoundError
 
     logger.info("Public lookup for slug %s resolved to template %s", slug, template.id)
     return template
@@ -286,11 +284,11 @@ async def list_platform_templates(
 
 async def get_platform_template(
     session: AsyncSession,
-    template_id: UUID,
+    id: UUID,
 ) -> PlatformTemplate:
     result = await session.execute(
         select(PlatformTemplate).where(
-            PlatformTemplate.id == template_id,
+            PlatformTemplate.id == id,
             PlatformTemplate.is_active.is_(True),
         )
     )
@@ -301,27 +299,27 @@ async def get_platform_template(
     return template
 
 
-async def duplicate_template(
+async def duplicate_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
-) -> OrganiserTemplate:
+    id: UUID,
+) -> Badge:
     result = await session.execute(
-        select(OrganiserTemplate)
-        .options(selectinload(OrganiserTemplate.hashtags))
+        select(Badge)
+        .options(selectinload(Badge.hashtags))
         .where(
-            OrganiserTemplate.id == template_id,
-            OrganiserTemplate.deleted_at.is_(None),
+            Badge.id == id,
+            Badge.deleted_at.is_(None),
         )
     )
     original = result.scalars().first()
     if original is None:
-        raise OrganiserTemplateNotFoundError
+        raise BadgeNotFoundError
 
     if original.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
-    copy = OrganiserTemplate(
+    copy = Badge(
         organiser_id=organiser_id,
         platform_template_id=original.platform_template_id,
         title=f"{original.title} (Copy)",
@@ -340,42 +338,42 @@ async def duplicate_template(
     await session.flush()
 
     for tag in original.hashtags:
-        session.add(TemplateHashtag(template_id=copy.id, hashtag=tag.hashtag))
+        session.add(BadgeHashtag(badge_id=copy.id, hashtag=tag.hashtag))
 
     await session.commit()
     await session.refresh(copy)
 
     logger.info(
         "Duplicated template %s as %s for organiser %s",
-        template_id,
+        id,
         copy.id,
         organiser_id,
     )
     return copy
 
 
-async def list_organiser_templates(
+async def list_badges(
     session: AsyncSession,
     organiser_id: UUID,
     page: int = 1,
     limit: int = 20,
-) -> tuple[list[OrganiserTemplate], int]:
+) -> tuple[list[Badge], int]:
     base_conditions = (
-        OrganiserTemplate.organiser_id == organiser_id,
-        OrganiserTemplate.deleted_at.is_(None),
+        Badge.organiser_id == organiser_id,
+        Badge.deleted_at.is_(None),
     )
 
     count_result = await session.execute(
-        select(func.count(OrganiserTemplate.id)).where(*base_conditions)
+        select(func.count(Badge.id)).where(*base_conditions)
     )
     total = count_result.scalar_one()
 
     stmt = (
-        select(OrganiserTemplate)
+        select(Badge)
         .where(*base_conditions)
         .order_by(
-            OrganiserTemplate.updated_at.desc().nulls_last(),
-            OrganiserTemplate.created_at.desc().nulls_last(),
+            Badge.updated_at.desc().nulls_last(),
+            Badge.created_at.desc().nulls_last(),
         )
         .offset((page - 1) * limit)
         .limit(limit)
@@ -384,8 +382,7 @@ async def list_organiser_templates(
     templates = list(result.scalars().all())
 
     logger.debug(
-        "list_organiser_templates: organiser=%s page=%d limit=%d "
-        "returned %d of %d total",
+        "list_badges: organiser=%s page=%d limit=%d returned %d of %d total",
         organiser_id,
         page,
         limit,
@@ -395,36 +392,33 @@ async def list_organiser_templates(
     return templates, total
 
 
-async def delete_organiser_template(
+async def delete_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
 ) -> None:
     result = await session.execute(
-        select(OrganiserTemplate)
-        .options(selectinload(OrganiserTemplate.badges))
-        .where(
-            OrganiserTemplate.id == template_id,
-            OrganiserTemplate.deleted_at.is_(None),
+        select(Badge).where(
+            Badge.id == id,
+            Badge.deleted_at.is_(None),
         )
     )
     template = result.scalars().first()
     if template is None:
-        raise OrganiserTemplateNotFoundError
+        raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     logo_public_id = template.logo_public_id
-    badge_public_ids = [
-        badge.badge_public_id for badge in template.badges if badge.badge_public_id
-    ]
 
-    await session.delete(template)
+    template.deleted_at = datetime.now(UTC)
+    template.is_published = False
+    template.published_at = None
     await session.commit()
 
     logger.info(
         "Deleted organiser template %s (organiser=%s)",
-        template_id,
+        id,
         organiser_id,
     )
 
@@ -436,56 +430,38 @@ async def delete_organiser_template(
                 "Failed to delete logo asset %s for template %s from Cloudinary "
                 "— manual cleanup may be required",
                 logo_public_id,
-                template_id,
+                id,
             )
         except Exception:
             logger.warning(
                 "Failed to delete logo asset %s for template %s from Cloudinary "
                 "— manual cleanup may be required",
                 logo_public_id,
-                template_id,
-            )
-
-    for public_id in badge_public_ids:
-        try:
-            await delete_asset(public_id)
-        except CloudinaryUploadError:
-            logger.warning(
-                "Failed to delete badge image asset %s for template %s from Cloudinary"
-                " — manual cleanup may be required",
-                public_id,
-                template_id,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to delete badge image asset %s for template %s from Cloudinary"
-                " — manual cleanup may be required",
-                public_id,
-                template_id,
+                id,
             )
 
 
-async def edit_organiser_template(
+async def edit_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
     field_updates: dict[str, Any],
     new_hashtags: list[str] | None,
     update_hashtags: bool,
-) -> OrganiserTemplate:
+) -> Badge:
     result = await session.execute(
-        select(OrganiserTemplate)
-        .options(selectinload(OrganiserTemplate.hashtags))
+        select(Badge)
+        .options(selectinload(Badge.hashtags))
         .where(
-            OrganiserTemplate.id == template_id,
-            OrganiserTemplate.deleted_at.is_(None),
+            Badge.id == id,
+            Badge.deleted_at.is_(None),
         )
     )
     template = result.scalars().first()
     if template is None:
-        raise OrganiserTemplateNotFoundError
+        raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     for field, value in field_updates.items():
         setattr(template, field, value)
@@ -493,15 +469,13 @@ async def edit_organiser_template(
     if update_hashtags:
         template.hashtags.clear()
         for tag in new_hashtags or []:
-            template.hashtags.append(TemplateHashtag(hashtag=tag))
+            template.hashtags.append(BadgeHashtag(hashtag=tag))
 
     await session.commit()
 
     # Re-query after commit to return a fully consistent object with
     # the updated hashtag relationship loaded.
     refreshed = await session.execute(
-        select(OrganiserTemplate)
-        .options(selectinload(OrganiserTemplate.hashtags))
-        .where(OrganiserTemplate.id == template_id)
+        select(Badge).options(selectinload(Badge.hashtags)).where(Badge.id == id)
     )
     return refreshed.scalars().one()
