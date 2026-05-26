@@ -117,7 +117,7 @@ async def badge(
     """Seed an organiser template owned by test_user."""
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="My Test Event",
         canvas_data={"layout": "test-v1"},
     )
@@ -197,7 +197,7 @@ async def test_publish_template_not_owner(
 
     template = Badge(
         organiser_id=owner.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Owner's Event",
         canvas_data={"layout": "test-v1"},
     )
@@ -307,7 +307,7 @@ async def template_instance(
     """Organiser template instance owned by test_user, no logo yet."""
     instance = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="My Template",
         canvas_data={},
     )
@@ -326,7 +326,7 @@ async def template_instance_with_logo(
     """Organiser template instance that already has an uploaded logo."""
     instance = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="My Template With Logo",
         canvas_data={},
         logo_url="https://old-logo.example.com/logo.png",
@@ -529,7 +529,7 @@ async def test_upload_logo_soft_deleted_instance_returns_404(
 
     deleted_instance = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Deleted Template",
         canvas_data={},
         deleted_at=datetime.now(UTC),
@@ -618,11 +618,10 @@ async def published_template(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Seed a published organiser template with a slug, logo, and hashtags."""
-    from app.models.templates import BadgeHashtag
 
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="HNG Tech Fest 2026",
         canvas_data={"layout": "bold-v1", "accent": "#FF5733"},
         logo_url="https://res.cloudinary.com/demo/image/upload/template-logos/fest.png",
@@ -672,7 +671,7 @@ async def test_get_participant_page_no_hashtags(
     """Published template with no hashtags should return an empty list."""
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="No Tags Event",
         canvas_data={"layout": "minimal-v1"},
         is_published=True,
@@ -697,7 +696,7 @@ async def test_get_participant_page_unpublished(
     """Slug exists but template is in draft state — should return 404."""
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Draft Event",
         canvas_data={"layout": "test-v1"},
         is_published=False,
@@ -731,7 +730,7 @@ async def test_get_participant_page_soft_deleted(
 
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Deleted Event",
         canvas_data={"layout": "test-v1"},
         is_published=True,
@@ -766,7 +765,7 @@ async def test_get_participant_page_was_published_then_unpublished(
     """Slug that was once published but has since been unpublished returns 404."""
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Past Event",
         canvas_data={"layout": "test-v1"},
         is_published=False,  # was published, now unpublished
@@ -906,11 +905,10 @@ async def source_for_duplicate(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Organiser template with hashtags, used as the duplication source."""
-    from app.models.templates import BadgeHashtag
 
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Source Event",
         canvas_data={"layout_id": "photo_gradient_v1", "accent": "#3498DB"},
         default_caption="Attending Source Event!",
@@ -1034,7 +1032,7 @@ async def test_duplicate_template_not_owner(
 
     template = Badge(
         organiser_id=owner.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Owner Only Event",
         canvas_data={"layout_id": "v1"},
     )
@@ -1076,7 +1074,7 @@ async def test_duplicate_soft_deleted_template_returns_404(
 
     deleted = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Gone Event",
         canvas_data={"layout_id": "v1"},
         deleted_at=datetime.now(UTC),
@@ -1105,7 +1103,7 @@ async def test_duplicate_published_template_copy_is_draft(
 
     published = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Live Event",
         canvas_data={"layout_id": "v1"},
         is_published=True,
@@ -1137,21 +1135,21 @@ async def badges_set(
 
     draft_a = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Draft Alpha",
         canvas_data={"layout_id": "v1"},
         is_published=False,
     )
     draft_b = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Draft Beta",
         canvas_data={"layout_id": "v1"},
         is_published=False,
     )
     published = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Published Gamma",
         canvas_data={"layout_id": "v1"},
         is_published=True,
@@ -1293,13 +1291,13 @@ async def test_list_instances_excludes_soft_deleted(
 
     live = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Live Template",
         canvas_data={"layout_id": "v1"},
     )
     deleted = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Deleted Template",
         canvas_data={"layout_id": "v1"},
         deleted_at=datetime.now(UTC),
@@ -1340,13 +1338,13 @@ async def test_list_instances_only_returns_current_users_templates(
 
     mine = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="My Template",
         canvas_data={"layout_id": "v1"},
     )
     theirs = Badge(
         organiser_id=other.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Their Template",
         canvas_data={"layout_id": "v1"},
     )
@@ -1375,7 +1373,7 @@ async def test_list_instances_pagination_prev_next_links(
         db_session.add(
             Badge(
                 organiser_id=test_user.id,
-                platform_badge_id=platform_template.id,
+                platform_template_id=platform_template.id,
                 title=f"Event {i}",
                 canvas_data={"layout_id": "v1"},
             )
@@ -1408,7 +1406,7 @@ async def test_list_instances_first_page_has_no_prev(
         db_session.add(
             Badge(
                 organiser_id=test_user.id,
-                platform_badge_id=platform_template.id,
+                platform_template_id=platform_template.id,
                 title=f"Event {i}",
                 canvas_data={"layout_id": "v1"},
             )
@@ -1436,7 +1434,7 @@ async def test_list_instances_last_page_has_no_next(
         db_session.add(
             Badge(
                 organiser_id=test_user.id,
-                platform_badge_id=platform_template.id,
+                platform_template_id=platform_template.id,
                 title=f"Event {i}",
                 canvas_data={"layout_id": "v1"},
             )
@@ -1485,7 +1483,7 @@ async def deletable_template(
 ) -> Badge:
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="To Be Deleted",
         canvas_data={"layout_id": "v1"},
         logo_url=(
@@ -1497,27 +1495,14 @@ async def deletable_template(
     db_session.add(template)
     await db_session.flush()
 
-    db_session.add(
-        Badge(
-            badge_id=template.id,
-            participant_name="Attendee",
-            badge_image_url=(
-                "https://res.cloudinary.com/mycloud/image/upload/badges/badge-del.png"
-            ),
-            badge_public_id="badges/badge-del",
-        )
-    )
-
     await db_session.commit()
     await db_session.refresh(template)
     return template
 
 
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
 @patch("app.services.template.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_returns_204(
     _mock_logo: AsyncMock,
-    _mock_asset: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
     deletable_template: Badge,
@@ -1531,11 +1516,9 @@ async def test_delete_template_returns_204(
     assert response.content == b""
 
 
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
 @patch("app.services.template.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_removes_from_db(
     _mock_logo: AsyncMock,
-    _mock_asset: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
     db_session: AsyncSession,
@@ -1552,11 +1535,9 @@ async def test_delete_template_removes_from_db(
     assert result is None
 
 
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
 @patch("app.services.template.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_triggers_logo_cloudinary_cleanup(
     mock_delete_logo: AsyncMock,
-    mock_delete_asset: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
     deletable_template: Badge,
@@ -1567,23 +1548,6 @@ async def test_delete_template_triggers_logo_cloudinary_cleanup(
     )
 
     mock_delete_logo.assert_awaited_once_with("template-logos/logo-del")
-
-
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
-async def test_delete_template_triggers_badge_cloudinary_cleanup(
-    mock_delete_logo: AsyncMock,
-    mock_delete_asset: AsyncMock,
-    client: AsyncClient,
-    auth_cookies: dict[str, str],
-    deletable_template: Badge,
-) -> None:
-    await client.delete(
-        f"/api/v1/templates/organizer/{deletable_template.id}",
-        cookies=auth_cookies,
-    )
-
-    mock_delete_asset.assert_awaited_once_with("badges/badge-del")
 
 
 async def test_delete_template_unauthenticated(
@@ -1632,7 +1596,7 @@ async def test_delete_template_not_owner(
 
     template = Badge(
         organiser_id=owner.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Owner Event",
         canvas_data={"layout_id": "v1"},
     )
@@ -1660,17 +1624,14 @@ async def test_delete_template_not_owner(
     assert response.json()["message"] == "You do not own this template."
 
 
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
 @patch("app.services.template.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_returns_204_despite_cloudinary_failure(
     mock_delete_logo: AsyncMock,
-    mock_delete_asset: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
     deletable_template: Badge,
 ) -> None:
     mock_delete_logo.side_effect = Exception("Cloudinary down")
-    mock_delete_asset.side_effect = Exception("Cloudinary down")
 
     response = await client.delete(
         f"/api/v1/templates/organizer/{deletable_template.id}",
@@ -1680,11 +1641,9 @@ async def test_delete_template_returns_204_despite_cloudinary_failure(
     assert response.status_code == 204
 
 
-@patch("app.services.template.delete_asset", new_callable=AsyncMock)
 @patch("app.services.template.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_soft_deleted_returns_404(
     _mock_logo: AsyncMock,
-    _mock_asset: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
     db_session: AsyncSession,
@@ -1693,7 +1652,7 @@ async def test_delete_template_soft_deleted_returns_404(
 ) -> None:
     soft_deleted = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Soft Deleted",
         canvas_data={"layout_id": "v1"},
         deleted_at=datetime.now(UTC),
@@ -1718,11 +1677,10 @@ async def patch_target(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Template with hashtags used as the target for PATCH tests."""
-    from app.models.templates import BadgeHashtag
 
     template = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Patch Me",
         canvas_data={"layout_id": "v1", "accent": "#000000"},
         default_caption="Original caption",
@@ -1917,7 +1875,7 @@ async def test_patch_template_not_owner(
 
     template = Badge(
         organiser_id=owner.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Owned Event",
         canvas_data={"layout_id": "v1"},
     )
@@ -1990,7 +1948,7 @@ async def test_patch_template_soft_deleted_returns_404(
 ) -> None:
     soft_deleted = Badge(
         organiser_id=test_user.id,
-        platform_badge_id=platform_template.id,
+        platform_template_id=platform_template.id,
         title="Gone",
         canvas_data={"layout_id": "v1"},
         deleted_at=datetime.now(UTC),
