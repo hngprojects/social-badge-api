@@ -128,7 +128,7 @@ class PlatformTemplateResponse(BaseModel):
     )
 
 
-class OrganiserTemplateSummary(BaseModel):
+class BadgeSummary(BaseModel):
     """Per-item shape for the organiser's template dashboard list.
 
     canvas_data is intentionally excluded — it is large and not needed
@@ -168,8 +168,8 @@ class OrganiserTemplateSummary(BaseModel):
         return "published" if self.is_published else "draft"
 
 
-class OrganiserTemplateListResponse(BaseModel):
-    templates: list[OrganiserTemplateSummary]
+class BadgeListResponse(BaseModel):
+    templates: list[BadgeSummary]
     total: int = Field(..., description="Total templates matching the filter.")
     page: int = Field(..., description="Current page number.")
     limit: int = Field(..., description="Items per page.")
@@ -203,7 +203,7 @@ class EditTemplateRequest(BaseModel):
         return list(dict.fromkeys(stripped))
 
 
-class OrganiserTemplateDetailResponse(BaseModel):
+class BadgeDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -225,7 +225,7 @@ class OrganiserTemplateDetailResponse(BaseModel):
     @field_validator("hashtags", mode="before")
     @classmethod
     def extract_hashtag_values(cls, val: Any) -> list[str]:
-        """Convert a list of TemplateHashtag ORM objects to plain strings."""
+        """Convert a list of BadgeHashtag ORM objects to plain strings."""
         if not isinstance(val, list):
             return []
         return [item.hashtag if hasattr(item, "hashtag") else str(item) for item in val]

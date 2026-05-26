@@ -61,7 +61,7 @@ class PlatformTemplateNotFoundError(Exception):
     pass
 
 
-class OrganiserTemplateNotFoundError(Exception):
+class BadgeNotFoundError(Exception):
     """Raised when a referenced organiser template does not exist."""
 
     pass

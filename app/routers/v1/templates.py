@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 
 from app.core.exceptions import (
+    BadgeNotFoundError,
     CloudinaryUploadError,
     NotTemplateOwnerError,
-    OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
     PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
@@ -18,13 +18,13 @@ from app.core.rate_limit import limiter
 from app.dependencies import CurrentUser, DBSession
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.schemas.template import (
+    BadgeDetailResponse,
+    BadgeListResponse,
+    BadgeSummary,
     CreateTemplateInstanceRequest,
     DuplicateTemplateResponse,
     EditTemplateRequest,
     LogoUploadResponse,
-    OrganiserTemplateDetailResponse,
-    OrganiserTemplateListResponse,
-    OrganiserTemplateSummary,
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
     PublicParticipantPageResponse,
@@ -33,12 +33,12 @@ from app.schemas.template import (
 )
 from app.services.template import (
     create_template_instance,
-    delete_organiser_template,
+    delete_badge,
     duplicate_template,
-    edit_organiser_template,
+    edit_badge,
     get_platform_template,
     get_public_template_by_slug,
-    list_organiser_templates,
+    list_badges,
     list_platform_templates,
     publish_template,
     unpublish_template,
@@ -130,7 +130,7 @@ async def create_instance(
 
 @router.get(
     "/organizer/instances",
-    response_model=SuccessResponse[OrganiserTemplateListResponse],
+    response_model=SuccessResponse[BadgeListResponse],
     status_code=status.HTTP_200_OK,
     summary="List organiser template instances",
     description=(
@@ -183,9 +183,9 @@ async def list_instances(
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1, description="Page number (1-based)."),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
-) -> SuccessResponse[OrganiserTemplateListResponse]:
+) -> SuccessResponse[BadgeListResponse]:
     """Return paginated template instances for the authenticated organiser."""
-    templates, total = await list_organiser_templates(
+    templates, total = await list_badges(
         session=session,
         organiser_id=current_user.id,
         page=page,
@@ -204,10 +204,9 @@ async def list_instances(
 
     return SuccessResponse(
         message="Template instances retrieved successfully.",
-        data=OrganiserTemplateListResponse(
+        data=BadgeListResponse(
             templates=[
-                OrganiserTemplateSummary.model_validate(org_template)
-                for org_template in templates
+                BadgeSummary.model_validate(org_template) for org_template in templates
             ],
             total=total,
             page=page,
@@ -251,7 +250,7 @@ async def publish(
             organiser_id=current_user.id,
             template_id=template_id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Template not found.",
@@ -304,7 +303,7 @@ async def unpublish(
             organiser_id=current_user.id,
             template_id=template_id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Template not found.",
@@ -354,7 +353,7 @@ async def duplicate(
             organiser_id=current_user.id,
             template_id=template_id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Template not found.",
@@ -399,12 +398,12 @@ async def delete_template(
 ) -> None:
     """Permanently delete an organiser template and its Cloudinary assets."""
     try:
-        await delete_organiser_template(
+        await delete_badge(
             session=session,
             organiser_id=current_user.id,
             template_id=template_id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Template not found.",
@@ -418,7 +417,7 @@ async def delete_template(
 
 @router.patch(
     "/organizer/{template_id}",
-    response_model=SuccessResponse[OrganiserTemplateDetailResponse],
+    response_model=SuccessResponse[BadgeDetailResponse],
     status_code=status.HTTP_200_OK,
     summary="Edit an organiser template",
     description=(
@@ -444,14 +443,14 @@ async def edit_template(
     current_user: CurrentUser,
     template_id: UUID,
     payload: EditTemplateRequest,
-) -> SuccessResponse[OrganiserTemplateDetailResponse]:
+) -> SuccessResponse[BadgeDetailResponse]:
     """Apply a partial update to an organiser template."""
     field_updates = payload.model_dump(exclude_unset=True)
     new_hashtags: list[str] | None = field_updates.pop("hashtags", None)
     update_hashtags: bool = "hashtags" in payload.model_fields_set
 
     try:
-        template = await edit_organiser_template(
+        template = await edit_badge(
             session=session,
             organiser_id=current_user.id,
             template_id=template_id,
@@ -459,7 +458,7 @@ async def edit_template(
             new_hashtags=new_hashtags,
             update_hashtags=update_hashtags,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Template not found.",
@@ -472,7 +471,7 @@ async def edit_template(
 
     return SuccessResponse(
         message="Template updated successfully.",
-        data=OrganiserTemplateDetailResponse.model_validate(template),
+        data=BadgeDetailResponse.model_validate(template),
     )
 
 

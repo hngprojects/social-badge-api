@@ -1,5 +1,6 @@
 from app.core.exceptions.base import (
     AccountLockedError,
+    BadgeNotFoundError,
     BadgeRenderError,
     CloudinaryUploadError,
     EmailAlreadyVerifiedError,
@@ -11,7 +12,6 @@ from app.core.exceptions.base import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
     NotTemplateOwnerError,
-    OrganiserTemplateNotFoundError,
     PlatformTemplateNotFoundError,
     PublicTemplateNotFoundError,
     TemplateAlreadyPublishedError,
@@ -28,7 +28,7 @@ __all__ = [
     "EmailDeliveryError",
     "EmailNotVerifiedError",
     "GoogleOAuthError",
-    "OrganiserTemplateNotFoundError",
+    "BadgeNotFoundError",
     "InvalidCredentialsError",
     "InvalidPasswordResetTokenError",
     "InvalidRefreshTokenError",
