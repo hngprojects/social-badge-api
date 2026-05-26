@@ -9,7 +9,6 @@ from app.routers.v1 import (
     newsletter,
     platform_templates,
     profile,
-    templates,
 )
 
 api_router = APIRouter()
@@ -18,7 +17,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(profile.router, prefix="/profile", tags=["profile"])
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])
 api_router.include_router(newsletter.router, prefix="/newsletter", tags=["newsletter"])
-api_router.include_router(templates.router, prefix="/templates", tags=["templates"])
+
 api_router.include_router(
     platform_templates.router,
     prefix="/templates/platform",

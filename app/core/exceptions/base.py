@@ -67,26 +67,14 @@ class BadgeNotFoundError(Exception):
     pass
 
 
-class NotTemplateOwnerError(Exception):
+class NotBadgeOwnerError(Exception):
     """Raised when a user attempts to act on a template they do not own."""
 
     pass
 
 
-class TemplateAlreadyPublishedError(Exception):
+class BadgeAlreadyPublishedError(Exception):
     """Raised when attempting to publish an already-published template."""
-
-    pass
-
-
-class TemplateInstanceNotFoundError(Exception):
-    """Raised when the requested organiser template instance does not exist."""
-
-    pass
-
-
-class TemplateInstanceForbiddenError(Exception):
-    """Raised when the authenticated user does not own the template instance."""
 
     pass
 
@@ -97,7 +85,7 @@ class CloudinaryUploadError(Exception):
     pass
 
 
-class PublicTemplateNotFoundError(Exception):
+class PublicBadgeNotFoundError(Exception):
     """Raised when a public slug does not resolve to a published template."""
 
     pass

@@ -41,7 +41,7 @@ async def test_get_platform_template_returns_none_when_missing(
 ) -> None:
     result = await get_platform_template(
         session=db_session,
-        badge_id=uuid.uuid4(),
+        template_id=uuid.uuid4(),
     )
     assert result is None
 
@@ -61,7 +61,7 @@ async def test_get_platform_template_returns_record(
 
     result = await get_platform_template(
         session=db_session,
-        badge_id=template.id,
+        template_id=template.id,
     )
     assert result is not None
     assert result.id == template.id

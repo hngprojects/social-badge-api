@@ -7,12 +7,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadgeNotFoundError, NotTemplateOwnerError
+from app.core.exceptions import BadgeNotFoundError, NotBadgeOwnerError
 from app.core.security import hash_password
 from app.models import Badge, BadgeHashtag, PlatformTemplate, User
-from app.services.template import (
+from app.services.badge import (
     delete_badge,
-    duplicate_template,
+    duplicate_badge,
     edit_badge,
     list_badges,
 )
@@ -103,10 +103,10 @@ async def test_duplicate_returns_new_record(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     assert copy.id != source_template.id
@@ -118,10 +118,10 @@ async def test_duplicate_copy_title_has_suffix(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     assert copy.title == "Original Event (Copy)"
@@ -132,10 +132,10 @@ async def test_duplicate_copies_canvas_data(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     assert copy.canvas_data == source_template.canvas_data
@@ -146,10 +146,10 @@ async def test_duplicate_copies_all_config_fields(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     assert copy.default_caption == source_template.default_caption
@@ -167,10 +167,10 @@ async def test_duplicate_copy_is_draft(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     assert copy.is_published is False
@@ -183,10 +183,10 @@ async def test_duplicate_published_template_copy_is_still_draft(
     organiser: User,
     published_source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=published_source_template.id,
+        id=published_source_template.id,
     )
 
     assert copy.is_published is False
@@ -199,10 +199,10 @@ async def test_duplicate_copies_hashtags(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     result = await db_session.execute(
@@ -222,10 +222,10 @@ async def test_duplicate_original_unchanged(
     original_canvas = source_template.canvas_data
     original_slug = source_template.share_slug
 
-    await duplicate_template(
+    await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     await db_session.refresh(source_template)
@@ -239,10 +239,10 @@ async def test_duplicate_persists_to_database(
     organiser: User,
     source_template: Badge,
 ) -> None:
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=source_template.id,
+        id=source_template.id,
     )
 
     fetched = await db_session.get(Badge, copy.id)
@@ -265,10 +265,10 @@ async def test_duplicate_template_without_hashtags(
     await db_session.commit()
     await db_session.refresh(bare)
 
-    copy = await duplicate_template(
+    copy = await duplicate_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=bare.id,
+        id=bare.id,
     )
 
     result = await db_session.execute(
@@ -282,10 +282,10 @@ async def test_duplicate_raises_not_found_for_missing_template(
     organiser: User,
 ) -> None:
     with pytest.raises(BadgeNotFoundError):
-        await duplicate_template(
+        await duplicate_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=uuid.uuid4(),
+            id=uuid.uuid4(),
         )
 
 
@@ -308,10 +308,10 @@ async def test_duplicate_raises_not_found_for_soft_deleted_template(
     await db_session.refresh(deleted)
 
     with pytest.raises(BadgeNotFoundError):
-        await duplicate_template(
+        await duplicate_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=deleted.id,
+            id=deleted.id,
         )
 
 
@@ -319,11 +319,11 @@ async def test_duplicate_raises_not_owner_for_other_user(
     db_session: AsyncSession,
     source_template: Badge,
 ) -> None:
-    with pytest.raises(NotTemplateOwnerError):
-        await duplicate_template(
+    with pytest.raises(NotBadgeOwnerError):
+        await duplicate_badge(
             session=db_session,
             organiser_id=uuid.uuid4(),
-            template_id=source_template.id,
+            id=source_template.id,
         )
 
 
@@ -622,26 +622,26 @@ async def bare_template(
     return template
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_removes_template_from_db(
     _mock_delete: AsyncMock,
     db_session: AsyncSession,
     organiser: User,
     bare_template: Badge,
 ) -> None:
-    template_id = bare_template.id
+    id = bare_template.id
 
     await delete_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=template_id,
+        id=id,
     )
 
-    result = await db_session.get(Badge, template_id)
+    result = await db_session.get(Badge, id)
     assert result is None
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_cascades_hashtags_from_db(
     _mock_delete: AsyncMock,
     db_session: AsyncSession,
@@ -660,20 +660,20 @@ async def test_delete_cascades_hashtags_from_db(
     await db_session.commit()
     await db_session.refresh(template)
 
-    template_id = template.id
+    id = template.id
     await delete_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=template_id,
+        id=id,
     )
 
     result = await db_session.execute(
-        select(BadgeHashtag).where(BadgeHashtag.badge_id == template_id)
+        select(BadgeHashtag).where(BadgeHashtag.badge_id == id)
     )
     assert result.scalars().all() == []
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_calls_cloudinary_for_logo(
     mock_delete_logo: AsyncMock,
     db_session: AsyncSession,
@@ -683,13 +683,13 @@ async def test_delete_calls_cloudinary_for_logo(
     await delete_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=template_with_logo.id,
+        id=template_with_logo.id,
     )
 
     mock_delete_logo.assert_awaited_once_with("template-logos/logo-abc")
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_skips_logo_cleanup_when_no_logo(
     mock_delete_logo: AsyncMock,
     db_session: AsyncSession,
@@ -699,13 +699,13 @@ async def test_delete_skips_logo_cleanup_when_no_logo(
     await delete_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=bare_template.id,
+        id=bare_template.id,
     )
 
     mock_delete_logo.assert_not_called()
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_continues_when_logo_cloudinary_fails(
     mock_delete_logo: AsyncMock,
     db_session: AsyncSession,
@@ -713,21 +713,21 @@ async def test_delete_continues_when_logo_cloudinary_fails(
     template_with_logo: Badge,
 ) -> None:
     mock_delete_logo.side_effect = Exception("Cloudinary unavailable")
-    template_id = template_with_logo.id
+    id = template_with_logo.id
 
     # Must not raise
     await delete_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=template_id,
+        id=id,
     )
 
     # Template is gone from DB despite Cloudinary failure
-    result = await db_session.get(Badge, template_id)
+    result = await db_session.get(Badge, id)
     assert result is None
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_raises_not_found_for_missing_template(
     _mock: AsyncMock,
     db_session: AsyncSession,
@@ -739,11 +739,11 @@ async def test_delete_raises_not_found_for_missing_template(
         await delete_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=uuid.uuid4(),
+            id=uuid.uuid4(),
         )
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_raises_not_found_for_soft_deleted_template(
     _mock: AsyncMock,
     db_session: AsyncSession,
@@ -765,11 +765,11 @@ async def test_delete_raises_not_found_for_soft_deleted_template(
         await delete_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=soft_deleted.id,
+            id=soft_deleted.id,
         )
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_raises_not_owner(
     _mock: AsyncMock,
     db_session: AsyncSession,
@@ -777,11 +777,11 @@ async def test_delete_raises_not_owner(
 ) -> None:
     import uuid
 
-    with pytest.raises(NotTemplateOwnerError):
+    with pytest.raises(NotBadgeOwnerError):
         await delete_badge(
             session=db_session,
             organiser_id=uuid.uuid4(),
-            template_id=bare_template.id,
+            id=bare_template.id,
         )
 
 
@@ -823,7 +823,7 @@ async def _call_edit(
     return await edit_badge(
         session=db_session,
         organiser_id=organiser.id,
-        template_id=template.id,
+        id=template.id,
         field_updates=field_updates,
         new_hashtags=new_hashtags,
         update_hashtags=update_hashtags,
@@ -1002,7 +1002,7 @@ async def test_edit_raises_not_found_for_missing_template(
         await edit_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=uuid.uuid4(),
+            id=uuid.uuid4(),
             field_updates={"title": "Ghost"},
             new_hashtags=None,
             update_hashtags=False,
@@ -1031,7 +1031,7 @@ async def test_edit_raises_not_found_for_soft_deleted_template(
         await edit_badge(
             session=db_session,
             organiser_id=organiser.id,
-            template_id=soft_deleted.id,
+            id=soft_deleted.id,
             field_updates={"title": "Attempt"},
             new_hashtags=None,
             update_hashtags=False,
@@ -1042,11 +1042,11 @@ async def test_edit_raises_not_owner(
     db_session: AsyncSession,
     editable_template: Badge,
 ) -> None:
-    with pytest.raises(NotTemplateOwnerError):
+    with pytest.raises(NotBadgeOwnerError):
         await edit_badge(
             session=db_session,
             organiser_id=uuid.uuid4(),
-            template_id=editable_template.id,
+            id=editable_template.id,
             field_updates={"title": "Hijacked"},
             new_hashtags=None,
             update_hashtags=False,

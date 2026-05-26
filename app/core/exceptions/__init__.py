@@ -1,5 +1,6 @@
 from app.core.exceptions.base import (
     AccountLockedError,
+    BadgeAlreadyPublishedError,
     BadgeNotFoundError,
     BadgeRenderError,
     CloudinaryUploadError,
@@ -11,12 +12,9 @@ from app.core.exceptions.base import (
     InvalidCredentialsError,
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
-    NotTemplateOwnerError,
+    NotBadgeOwnerError,
     PlatformTemplateNotFoundError,
-    PublicTemplateNotFoundError,
-    TemplateAlreadyPublishedError,
-    TemplateInstanceForbiddenError,
-    TemplateInstanceNotFoundError,
+    PublicBadgeNotFoundError,
 )
 from app.core.exceptions.handlers import register_exception_handlers
 
@@ -32,12 +30,10 @@ __all__ = [
     "InvalidCredentialsError",
     "InvalidPasswordResetTokenError",
     "InvalidRefreshTokenError",
-    "TemplateAlreadyPublishedError",
+    "BadgeAlreadyPublishedError",
     "AccountLockedError",
-    "NotTemplateOwnerError",
+    "NotBadgeOwnerError",
     "PlatformTemplateNotFoundError",
-    "PublicTemplateNotFoundError",
-    "TemplateInstanceNotFoundError",
-    "TemplateInstanceForbiddenError",
+    "PublicBadgeNotFoundError",
     "CloudinaryUploadError",
 ]

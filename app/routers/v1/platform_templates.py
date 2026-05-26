@@ -6,12 +6,12 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from app.core.exceptions import PlatformTemplateNotFoundError
 from app.core.rate_limit import limiter
 from app.dependencies import DBSession
-from app.schemas.response import ErrorResponse, SuccessResponse
-from app.schemas.template import (
+from app.schemas.badge import (
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
 )
-from app.services.template import (
+from app.schemas.response import ErrorResponse, SuccessResponse
+from app.services.badge import (
     get_platform_template,
     list_platform_templates,
 )
@@ -141,7 +141,7 @@ async def list_templates(
 
 
 @router.get(
-    "/{template_id}",
+    "/{id}",
     response_model=SuccessResponse[PlatformTemplateResponse],
     status_code=status.HTTP_200_OK,
     summary="Get a single platform template",
@@ -169,14 +169,14 @@ async def list_templates(
     },
 )
 @limiter.limit("60/minute")
-async def get_template(
+async def get_badge(
     request: Request,
     session: DBSession,
-    template_id: UUID,
+    id: UUID,
 ) -> SuccessResponse[PlatformTemplateResponse]:
     """Return a single active platform template by id."""
     try:
-        template = await get_platform_template(session, template_id)
+        template = await get_platform_template(session, id)
     except PlatformTemplateNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

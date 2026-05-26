@@ -10,14 +10,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.exceptions import (
+    BadgeAlreadyPublishedError,
     BadgeNotFoundError,
     CloudinaryUploadError,
-    NotTemplateOwnerError,
+    NotBadgeOwnerError,
     PlatformTemplateNotFoundError,
-    PublicTemplateNotFoundError,
-    TemplateAlreadyPublishedError,
-    TemplateInstanceForbiddenError,
-    TemplateInstanceNotFoundError,
+    PublicBadgeNotFoundError,
 )
 from app.core.slug import generate_share_slug
 from app.models import Badge, BadgeHashtag, PlatformTemplate
@@ -45,7 +43,7 @@ VALID_CATEGORIES = frozenset(
 )
 
 
-async def create_template_instance(
+async def create_badge(
     session: AsyncSession,
     organiser_id: UUID,
     platform_template_id: UUID,
@@ -76,19 +74,19 @@ async def create_template_instance(
     return instance
 
 
-async def publish_template(
+async def publish_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
 ) -> Badge:
-    result = await session.execute(select(Badge).where(Badge.id == template_id))
+    result = await session.execute(select(Badge).where(Badge.id == id))
     template = result.scalars().first()
     if template is None or template.deleted_at is not None:
         raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
     if template.is_published:
-        raise TemplateAlreadyPublishedError
+        raise BadgeAlreadyPublishedError
 
     now = datetime.now(UTC)
     if template.share_slug is None:
@@ -112,17 +110,17 @@ async def publish_template(
     return template
 
 
-async def unpublish_template(
+async def unpublish_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
 ) -> Badge:
-    result = await session.execute(select(Badge).where(Badge.id == template_id))
+    result = await session.execute(select(Badge).where(Badge.id == id))
     template = result.scalars().first()
     if template is None or template.deleted_at is not None:
         raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     template.is_published = False
     template.published_at = None
@@ -133,32 +131,32 @@ async def unpublish_template(
     return template
 
 
-async def upload_template_logo(
+async def upload_badge_logo(
     session: AsyncSession,
-    instance_id: UUID,
+    id: UUID,
     organiser_id: UUID,
     image_data: bytes,
 ) -> str:
     """Upload a logo for a template instance and return the Cloudinary URL.
 
     Raises:
-        TemplateInstanceNotFoundError: if the instance does not exist.
-        TemplateInstanceForbiddenError: if the instance belongs to another organiser.
+        BadgeNotFoundError: if the instance does not exist.
+        NotBadgeOwnerError: if the instance belongs to another organiser.
         CloudinaryUploadError: if the Cloudinary upload fails.
     """
     result = await session.execute(
         select(Badge).where(
-            Badge.id == instance_id,
+            Badge.id == id,
             Badge.deleted_at.is_(None),
         )
     )
     instance = result.scalars().first()
 
     if instance is None:
-        raise TemplateInstanceNotFoundError
+        raise BadgeNotFoundError
 
     if instance.organiser_id != organiser_id:
-        raise TemplateInstanceForbiddenError
+        raise NotBadgeOwnerError
 
     old_public_id = instance.logo_public_id
 
@@ -195,13 +193,13 @@ async def upload_template_logo(
 
     logger.info(
         "Uploaded logo for template instance %s (public_id=%s)",
-        instance_id,
+        id,
         public_id,
     )
     return logo_url
 
 
-async def get_public_template_by_slug(
+async def get_public_badge_by_slug(
     session: AsyncSession,
     slug: str,
 ) -> Badge:
@@ -216,7 +214,7 @@ async def get_public_template_by_slug(
     )
     template = result.scalars().first()
     if template is None:
-        raise PublicTemplateNotFoundError
+        raise PublicBadgeNotFoundError
 
     logger.info("Public lookup for slug %s resolved to template %s", slug, template.id)
     return template
@@ -280,11 +278,11 @@ async def list_platform_templates(
 
 async def get_platform_template(
     session: AsyncSession,
-    template_id: UUID,
+    id: UUID,
 ) -> PlatformTemplate:
     result = await session.execute(
         select(PlatformTemplate).where(
-            PlatformTemplate.id == template_id,
+            PlatformTemplate.id == id,
             PlatformTemplate.is_active.is_(True),
         )
     )
@@ -295,16 +293,16 @@ async def get_platform_template(
     return template
 
 
-async def duplicate_template(
+async def duplicate_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
 ) -> Badge:
     result = await session.execute(
         select(Badge)
         .options(selectinload(Badge.hashtags))
         .where(
-            Badge.id == template_id,
+            Badge.id == id,
             Badge.deleted_at.is_(None),
         )
     )
@@ -313,7 +311,7 @@ async def duplicate_template(
         raise BadgeNotFoundError
 
     if original.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     copy = Badge(
         organiser_id=organiser_id,
@@ -341,7 +339,7 @@ async def duplicate_template(
 
     logger.info(
         "Duplicated template %s as %s for organiser %s",
-        template_id,
+        id,
         copy.id,
         organiser_id,
     )
@@ -391,11 +389,11 @@ async def list_badges(
 async def delete_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
 ) -> None:
     result = await session.execute(
         select(Badge).where(
-            Badge.id == template_id,
+            Badge.id == id,
             Badge.deleted_at.is_(None),
         )
     )
@@ -403,7 +401,7 @@ async def delete_badge(
     if template is None:
         raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     logo_public_id = template.logo_public_id
 
@@ -412,7 +410,7 @@ async def delete_badge(
 
     logger.info(
         "Deleted organiser template %s (organiser=%s)",
-        template_id,
+        id,
         organiser_id,
     )
 
@@ -424,21 +422,21 @@ async def delete_badge(
                 "Failed to delete logo asset %s for template %s from Cloudinary "
                 "— manual cleanup may be required",
                 logo_public_id,
-                template_id,
+                id,
             )
         except Exception:
             logger.warning(
                 "Failed to delete logo asset %s for template %s from Cloudinary "
                 "— manual cleanup may be required",
                 logo_public_id,
-                template_id,
+                id,
             )
 
 
 async def edit_badge(
     session: AsyncSession,
     organiser_id: UUID,
-    template_id: UUID,
+    id: UUID,
     field_updates: dict[str, Any],
     new_hashtags: list[str] | None,
     update_hashtags: bool,
@@ -447,7 +445,7 @@ async def edit_badge(
         select(Badge)
         .options(selectinload(Badge.hashtags))
         .where(
-            Badge.id == template_id,
+            Badge.id == id,
             Badge.deleted_at.is_(None),
         )
     )
@@ -455,7 +453,7 @@ async def edit_badge(
     if template is None:
         raise BadgeNotFoundError
     if template.organiser_id != organiser_id:
-        raise NotTemplateOwnerError
+        raise NotBadgeOwnerError
 
     for field, value in field_updates.items():
         setattr(template, field, value)
@@ -470,8 +468,6 @@ async def edit_badge(
     # Re-query after commit to return a fully consistent object with
     # the updated hashtag relationship loaded.
     refreshed = await session.execute(
-        select(Badge)
-        .options(selectinload(Badge.hashtags))
-        .where(Badge.id == template_id)
+        select(Badge).options(selectinload(Badge.hashtags)).where(Badge.id == id)
     )
     return refreshed.scalars().one()

@@ -58,17 +58,17 @@ async def test_create_instance_success(
     test_user: User,
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
         json={"platform_template_id": str(platform_template.id)},
     )
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template instance created successfully."
+    assert data["message"] == "Badge created successfully."
     assert data["data"]["platform_template_id"] == str(platform_template.id)
     assert data["data"]["organiser_id"] == str(test_user.id)
-    assert "instance_id" in data["data"]
+    assert "id" in data["data"]
     assert "created_at" in data["data"]
 
 
@@ -76,7 +76,7 @@ async def test_create_instance_unauthenticated(
     client: AsyncClient, platform_template: PlatformTemplate
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         json={"platform_template_id": str(platform_template.id)},
     )
     assert response.status_code in (401, 403)
@@ -87,7 +87,7 @@ async def test_create_instance_platform_template_not_found(
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
         json={"platform_template_id": str(fake_id)},
     )
@@ -101,7 +101,7 @@ async def test_create_instance_missing_field(
     client: AsyncClient, auth_cookies: dict[str, str]
 ) -> None:
     response = await client.post(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
         json={},
     )
@@ -114,7 +114,7 @@ async def badge(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> Badge:
-    """Seed an organiser template owned by test_user."""
+    """Seed an badge owned by test_user."""
     template = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -133,13 +133,13 @@ async def test_publish_template_success(
     badge: Badge,
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template published successfully."
+    assert data["message"] == "Badge published successfully."
     assert data["data"]["is_published"] is True
     assert data["data"]["share_slug"] is not None
     assert len(data["data"]["share_slug"]) == 12
@@ -150,7 +150,7 @@ async def test_publish_template_unauthenticated(
     client: AsyncClient, badge: Badge
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
     )
     assert response.status_code in (401, 403)
 
@@ -160,11 +160,11 @@ async def test_publish_template_not_found(
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        f"/api/v1/templates/organizer/{fake_id}/publish",
+        f"/api/v1/badges/{fake_id}/publish",
         cookies=auth_cookies,
     )
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_publish_template_not_owner(
@@ -207,11 +207,11 @@ async def test_publish_template_not_owner(
 
     other_token = create_access_token(other.id)
     response = await client.post(
-        f"/api/v1/templates/organizer/{template.id}/publish",
+        f"/api/v1/badges/{template.id}/publish",
         cookies={settings.ACCESS_COOKIE: other_token},
     )
     assert response.status_code == 403
-    assert response.json()["message"] == "You do not own this template."
+    assert response.json()["message"] == "You do not own this badge."
 
 
 async def test_publish_template_already_published(
@@ -220,15 +220,15 @@ async def test_publish_template_already_published(
     badge: Badge,
 ) -> None:
     await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     response = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     assert response.status_code == 409
-    assert response.json()["message"] == "Template is already published."
+    assert response.json()["message"] == "Badge is already published."
 
 
 async def test_unpublish_template_success(
@@ -237,19 +237,19 @@ async def test_unpublish_template_success(
     badge: Badge,
 ) -> None:
     publish_response = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     original_slug = publish_response.json()["data"]["share_slug"]
 
     response = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/unpublish",
+        f"/api/v1/badges/{badge.id}/unpublish",
         cookies=auth_cookies,
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template unpublished successfully."
+    assert data["message"] == "Badge unpublished successfully."
     assert data["data"]["is_published"] is False
     assert data["data"]["share_slug"] == original_slug
     assert data["data"]["published_at"] is None
@@ -261,17 +261,17 @@ async def test_republish_preserves_slug(
     badge: Badge,
 ) -> None:
     first = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     original_slug = first.json()["data"]["share_slug"]
 
     await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/unpublish",
+        f"/api/v1/badges/{badge.id}/unpublish",
         cookies=auth_cookies,
     )
     second = await client.post(
-        f"/api/v1/templates/organizer/{badge.id}/publish",
+        f"/api/v1/badges/{badge.id}/publish",
         cookies=auth_cookies,
     )
     assert second.status_code == 200
@@ -283,7 +283,7 @@ async def test_unpublish_template_not_found(
 ) -> None:
     fake_id = uuid.uuid4()
     response = await client.post(
-        f"/api/v1/templates/organizer/{fake_id}/unpublish",
+        f"/api/v1/badges/{fake_id}/unpublish",
         cookies=auth_cookies,
     )
     assert response.status_code == 404
@@ -304,7 +304,7 @@ async def template_instance(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> Badge:
-    """Organiser template instance owned by test_user, no logo yet."""
+    """Organiser badge owned by test_user, no logo yet."""
     instance = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -323,7 +323,7 @@ async def template_instance_with_logo(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> Badge:
-    """Organiser template instance that already has an uploaded logo."""
+    """Organiser badge that already has an uploaded logo."""
     instance = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -360,7 +360,7 @@ def other_auth_cookies(other_user: User) -> dict[str, str]:
     return {settings.ACCESS_COOKIE: token}
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_success(
     mock_upload: AsyncMock,
     client: AsyncClient,
@@ -370,7 +370,7 @@ async def test_upload_logo_success(
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
@@ -383,8 +383,8 @@ async def test_upload_logo_success(
     mock_upload.assert_called_once_with(_FAKE_PNG)
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_replaces_existing(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
@@ -396,7 +396,7 @@ async def test_upload_logo_replaces_existing(
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance_with_logo.id}/logo",
+        f"/api/v1/badges/{template_instance_with_logo.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.jpg", _FAKE_JPEG, "image/jpeg")},
     )
@@ -406,7 +406,7 @@ async def test_upload_logo_replaces_existing(
     mock_upload.assert_called_once()
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_unsupported_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
@@ -414,7 +414,7 @@ async def test_upload_logo_unsupported_type(
     template_instance: Badge,
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.gif", b"fake-gif-bytes", "image/gif")},
     )
@@ -425,7 +425,7 @@ async def test_upload_logo_unsupported_type(
     mock_upload.assert_not_called()
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_too_large(
     mock_upload: AsyncMock,
     client: AsyncClient,
@@ -436,7 +436,7 @@ async def test_upload_logo_too_large(
     oversized = _FAKE_PNG + b"x" * (2 * 1024 * 1024)
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.png", oversized, "image/png")},
     )
@@ -452,21 +452,21 @@ async def test_upload_logo_unauthenticated(
     template_instance: Badge,
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
 
     assert response.status_code in (401, 403)
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_instance_not_found(
     mock_upload: AsyncMock,
     client: AsyncClient,
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{uuid.uuid4()}/logo",
+        f"/api/v1/badges/{uuid.uuid4()}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
@@ -474,7 +474,7 @@ async def test_upload_logo_instance_not_found(
     assert response.status_code == 404
     data = response.json()
     assert data["status"] == "error"
-    assert data["message"] == "Template instance not found."
+    assert data["message"] == "Badge not found."
     mock_upload.assert_not_called()
 
 
@@ -485,7 +485,7 @@ async def test_upload_logo_forbidden(
 ) -> None:
     """A user who does not own the instance should get 403."""
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         cookies=other_auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
@@ -495,7 +495,7 @@ async def test_upload_logo_forbidden(
     assert data["status"] == "error"
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_rejects_spoofed_mime_type(
     mock_upload: AsyncMock,
     client: AsyncClient,
@@ -506,7 +506,7 @@ async def test_upload_logo_rejects_spoofed_mime_type(
     gif_bytes = b"GIF89a" + b"\x00" * 20
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance.id}/logo",
+        f"/api/v1/badges/{template_instance.id}/logo",
         cookies=auth_cookies,
         files={"file": ("evil.png", gif_bytes, "image/png")},
     )
@@ -515,7 +515,7 @@ async def test_upload_logo_rejects_spoofed_mime_type(
     mock_upload.assert_not_called()
 
 
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_soft_deleted_instance_returns_404(
     mock_upload: AsyncMock,
     client: AsyncClient,
@@ -539,7 +539,7 @@ async def test_upload_logo_soft_deleted_instance_returns_404(
     await db_session.refresh(deleted_instance)
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{deleted_instance.id}/logo",
+        f"/api/v1/badges/{deleted_instance.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
@@ -548,8 +548,8 @@ async def test_upload_logo_soft_deleted_instance_returns_404(
     mock_upload.assert_not_called()
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_uploads_before_deleting_old(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
@@ -571,7 +571,7 @@ async def test_upload_logo_uploads_before_deleting_old(
     mock_delete.side_effect = fake_delete
 
     response = await client.put(
-        f"/api/v1/templates/organizer/instances/{template_instance_with_logo.id}/logo",
+        f"/api/v1/badges/{template_instance_with_logo.id}/logo",
         cookies=auth_cookies,
         files={"file": ("logo.png", _FAKE_PNG, "image/png")},
     )
@@ -582,8 +582,8 @@ async def test_upload_logo_uploads_before_deleting_old(
     )
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
-@patch("app.services.template.upload_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
 async def test_upload_logo_rate_limit(
     mock_upload: AsyncMock,
     mock_delete: AsyncMock,
@@ -593,7 +593,7 @@ async def test_upload_logo_rate_limit(
 ) -> None:
     mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
 
-    url = f"/api/v1/templates/organizer/instances/{template_instance.id}/logo"
+    url = f"/api/v1/badges/{template_instance.id}/logo"
     for _ in range(10):
         await client.put(
             url,
@@ -617,7 +617,7 @@ async def published_template(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> Badge:
-    """Seed a published organiser template with a slug, logo, and hashtags."""
+    """Seed a published badge with a slug, logo, and hashtags."""
 
     template = Badge(
         organiser_id=test_user.id,
@@ -646,12 +646,12 @@ async def test_get_participant_page_success(
     published_template: Badge,
 ) -> None:
     response = await client.get(
-        f"/api/v1/templates/organizer/public/{published_template.share_slug}",
+        f"/api/v1/badges/public/{published_template.share_slug}",
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template data retrieved successfully."
+    assert data["message"] == "Badge data retrieved successfully."
     assert data["data"]["title"] == "HNG Tech Fest 2026"
     assert data["data"]["canvas_data"] == {"layout": "bold-v1", "accent": "#FF5733"}
     assert data["data"]["logo_url"] == (
@@ -681,7 +681,7 @@ async def test_get_participant_page_no_hashtags(
     await db_session.commit()
     await db_session.refresh(template)
 
-    response = await client.get("/api/v1/templates/organizer/public/notags000001")
+    response = await client.get("/api/v1/badges/public/notags000001")
     assert response.status_code == 200
     data = response.json()
     assert data["data"]["hashtags"] == []
@@ -705,18 +705,18 @@ async def test_get_participant_page_unpublished(
     db_session.add(template)
     await db_session.commit()
 
-    response = await client.get("/api/v1/templates/organizer/public/draft0000001")
+    response = await client.get("/api/v1/badges/public/draft0000001")
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_get_participant_page_nonexistent_slug(
     client: AsyncClient,
 ) -> None:
     """A completely random slug should return 404."""
-    response = await client.get("/api/v1/templates/organizer/public/doesnotexist1")
+    response = await client.get("/api/v1/badges/public/doesnotexist1")
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_get_participant_page_soft_deleted(
@@ -740,9 +740,9 @@ async def test_get_participant_page_soft_deleted(
     db_session.add(template)
     await db_session.commit()
 
-    response = await client.get("/api/v1/templates/organizer/public/deleted00001")
+    response = await client.get("/api/v1/badges/public/deleted00001")
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_get_participant_page_no_auth_required(
@@ -751,7 +751,7 @@ async def test_get_participant_page_no_auth_required(
 ) -> None:
     """No Bearer token sent — should still return 200, not 401."""
     response = await client.get(
-        f"/api/v1/templates/organizer/public/{published_template.share_slug}",
+        f"/api/v1/badges/public/{published_template.share_slug}",
     )
     assert response.status_code == 200
 
@@ -774,9 +774,9 @@ async def test_get_participant_page_was_published_then_unpublished(
     db_session.add(template)
     await db_session.commit()
 
-    response = await client.get("/api/v1/templates/organizer/public/waspub000001")
+    response = await client.get("/api/v1/badges/public/waspub000001")
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 @pytest.fixture
@@ -904,7 +904,7 @@ async def source_for_duplicate(
     test_user: User,
     platform_template: PlatformTemplate,
 ) -> Badge:
-    """Organiser template with hashtags, used as the duplication source."""
+    """Badge with hashtags, used as the duplication source."""
 
     template = Badge(
         organiser_id=test_user.id,
@@ -935,14 +935,14 @@ async def test_duplicate_template_success(
     test_user: User,
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        f"/api/v1/badges/{source_for_duplicate.id}/duplicate",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template duplicated successfully."
+    assert data["message"] == "Badge duplicated successfully."
     assert data["data"]["id"] != str(source_for_duplicate.id)
     assert data["data"]["title"] == "Source Event (Copy)"
     assert data["data"]["organiser_id"] == str(test_user.id)
@@ -960,7 +960,7 @@ async def test_duplicate_template_copy_is_draft(
 ) -> None:
     """The response must never carry a slug or published state."""
     response = await client.post(
-        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        f"/api/v1/badges/{source_for_duplicate.id}/duplicate",
         cookies=auth_cookies,
     )
 
@@ -978,7 +978,7 @@ async def test_duplicate_template_original_unchanged(
     source_for_duplicate: Badge,
 ) -> None:
     await client.post(
-        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        f"/api/v1/badges/{source_for_duplicate.id}/duplicate",
         cookies=auth_cookies,
     )
 
@@ -991,7 +991,7 @@ async def test_duplicate_template_unauthenticated(
     source_for_duplicate: Badge,
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/organizer/{source_for_duplicate.id}/duplicate",
+        f"/api/v1/badges/{source_for_duplicate.id}/duplicate",
     )
 
     assert response.status_code in (401, 403)
@@ -1002,14 +1002,14 @@ async def test_duplicate_template_not_found(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.post(
-        f"/api/v1/templates/organizer/{uuid.uuid4()}/duplicate",
+        f"/api/v1/badges/{uuid.uuid4()}/duplicate",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 404
     data = response.json()
     assert data["status"] == "error"
-    assert data["message"] == "Template not found."
+    assert data["message"] == "Badge not found."
 
 
 async def test_duplicate_template_not_owner(
@@ -1053,14 +1053,14 @@ async def test_duplicate_template_not_owner(
 
     other_token = create_access_token(other.id)
     response = await client.post(
-        f"/api/v1/templates/organizer/{template.id}/duplicate",
+        f"/api/v1/badges/{template.id}/duplicate",
         cookies={settings.ACCESS_COOKIE: other_token},
     )
 
     assert response.status_code == 403
     data = response.json()
     assert data["status"] == "error"
-    assert data["message"] == "You do not own this template."
+    assert data["message"] == "You do not own this badge."
 
 
 async def test_duplicate_soft_deleted_template_returns_404(
@@ -1084,12 +1084,12 @@ async def test_duplicate_soft_deleted_template_returns_404(
     await db_session.refresh(deleted)
 
     response = await client.post(
-        f"/api/v1/templates/organizer/{deleted.id}/duplicate",
+        f"/api/v1/badges/{deleted.id}/duplicate",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_duplicate_published_template_copy_is_draft(
@@ -1115,7 +1115,7 @@ async def test_duplicate_published_template_copy_is_draft(
     await db_session.refresh(published)
 
     response = await client.post(
-        f"/api/v1/templates/organizer/{published.id}/duplicate",
+        f"/api/v1/badges/{published.id}/duplicate",
         cookies=auth_cookies,
     )
 
@@ -1172,14 +1172,14 @@ async def test_list_instances_success(
     badges_set: list[Badge],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template instances retrieved successfully."
+    assert data["message"] == "Badges retrieved successfully."
     assert data["data"]["total"] == 3
     assert len(data["data"]["templates"]) == 3
 
@@ -1190,7 +1190,7 @@ async def test_list_instances_response_shape(
     badges_set: list[Badge],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1216,7 +1216,7 @@ async def test_list_instances_status_field_draft(
     badges_set: list[Badge],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1231,7 +1231,7 @@ async def test_list_instances_status_field_published(
     badges_set: list[Badge],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1247,7 +1247,7 @@ async def test_list_instances_canvas_data_not_exposed(
 ) -> None:
     """canvas_data must not appear in the list response — it is large and unused."""
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1260,7 +1260,7 @@ async def test_list_instances_empty_when_no_templates(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1275,7 +1275,7 @@ async def test_list_instances_empty_when_no_templates(
 async def test_list_instances_unauthenticated(
     client: AsyncClient,
 ) -> None:
-    response = await client.get("/api/v1/templates/organizer/instances")
+    response = await client.get("/api/v1/badges")
 
     assert response.status_code in (401, 403)
 
@@ -1307,7 +1307,7 @@ async def test_list_instances_excludes_soft_deleted(
     await db_session.commit()
 
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1353,7 +1353,7 @@ async def test_list_instances_only_returns_current_users_templates(
     await db_session.commit()
 
     response = await client.get(
-        "/api/v1/templates/organizer/instances",
+        "/api/v1/badges",
         cookies=auth_cookies,
     )
 
@@ -1381,7 +1381,7 @@ async def test_list_instances_pagination_prev_next_links(
     await db_session.commit()
 
     response = await client.get(
-        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        "/api/v1/badges?page=2&limit=2",
         cookies=auth_cookies,
     )
 
@@ -1414,7 +1414,7 @@ async def test_list_instances_first_page_has_no_prev(
     await db_session.commit()
 
     response = await client.get(
-        "/api/v1/templates/organizer/instances?page=1&limit=2",
+        "/api/v1/badges?page=1&limit=2",
         cookies=auth_cookies,
     )
 
@@ -1442,7 +1442,7 @@ async def test_list_instances_last_page_has_no_next(
     await db_session.commit()
 
     response = await client.get(
-        "/api/v1/templates/organizer/instances?page=2&limit=2",
+        "/api/v1/badges?page=2&limit=2",
         cookies=auth_cookies,
     )
 
@@ -1456,7 +1456,7 @@ async def test_list_instances_invalid_page_param(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances?page=0",
+        "/api/v1/badges?page=0",
         cookies=auth_cookies,
     )
 
@@ -1468,7 +1468,7 @@ async def test_list_instances_limit_exceeds_maximum(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.get(
-        "/api/v1/templates/organizer/instances?limit=101",
+        "/api/v1/badges?limit=101",
         cookies=auth_cookies,
     )
 
@@ -1500,7 +1500,7 @@ async def deletable_template(
     return template
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_returns_204(
     _mock_logo: AsyncMock,
     client: AsyncClient,
@@ -1508,7 +1508,7 @@ async def test_delete_template_returns_204(
     deletable_template: Badge,
 ) -> None:
     response = await client.delete(
-        f"/api/v1/templates/organizer/{deletable_template.id}",
+        f"/api/v1/badges/{deletable_template.id}",
         cookies=auth_cookies,
     )
 
@@ -1516,7 +1516,7 @@ async def test_delete_template_returns_204(
     assert response.content == b""
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_removes_from_db(
     _mock_logo: AsyncMock,
     client: AsyncClient,
@@ -1524,18 +1524,18 @@ async def test_delete_template_removes_from_db(
     db_session: AsyncSession,
     deletable_template: Badge,
 ) -> None:
-    template_id = deletable_template.id
+    id = deletable_template.id
 
     await client.delete(
-        f"/api/v1/templates/organizer/{template_id}",
+        f"/api/v1/badges/{id}",
         cookies=auth_cookies,
     )
 
-    result = await db_session.get(Badge, template_id)
+    result = await db_session.get(Badge, id)
     assert result is None
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_triggers_logo_cloudinary_cleanup(
     mock_delete_logo: AsyncMock,
     client: AsyncClient,
@@ -1543,7 +1543,7 @@ async def test_delete_template_triggers_logo_cloudinary_cleanup(
     deletable_template: Badge,
 ) -> None:
     await client.delete(
-        f"/api/v1/templates/organizer/{deletable_template.id}",
+        f"/api/v1/badges/{deletable_template.id}",
         cookies=auth_cookies,
     )
 
@@ -1555,7 +1555,7 @@ async def test_delete_template_unauthenticated(
     deletable_template: Badge,
 ) -> None:
     response = await client.delete(
-        f"/api/v1/templates/organizer/{deletable_template.id}",
+        f"/api/v1/badges/{deletable_template.id}",
     )
 
     assert response.status_code in (401, 403)
@@ -1566,14 +1566,14 @@ async def test_delete_template_not_found(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.delete(
-        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        f"/api/v1/badges/{uuid.uuid4()}",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 404
     data = response.json()
     assert data["status"] == "error"
-    assert data["message"] == "Template not found."
+    assert data["message"] == "Badge not found."
 
 
 async def test_delete_template_not_owner(
@@ -1616,15 +1616,15 @@ async def test_delete_template_not_owner(
     await db_session.refresh(other)
 
     response = await client.delete(
-        f"/api/v1/templates/organizer/{template.id}",
+        f"/api/v1/badges/{template.id}",
         cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
     )
 
     assert response.status_code == 403
-    assert response.json()["message"] == "You do not own this template."
+    assert response.json()["message"] == "You do not own this badge."
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_returns_204_despite_cloudinary_failure(
     mock_delete_logo: AsyncMock,
     client: AsyncClient,
@@ -1634,14 +1634,14 @@ async def test_delete_template_returns_204_despite_cloudinary_failure(
     mock_delete_logo.side_effect = Exception("Cloudinary down")
 
     response = await client.delete(
-        f"/api/v1/templates/organizer/{deletable_template.id}",
+        f"/api/v1/badges/{deletable_template.id}",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 204
 
 
-@patch("app.services.template.delete_logo", new_callable=AsyncMock)
+@patch("app.services.badge.delete_logo", new_callable=AsyncMock)
 async def test_delete_template_soft_deleted_returns_404(
     _mock_logo: AsyncMock,
     client: AsyncClient,
@@ -1662,12 +1662,12 @@ async def test_delete_template_soft_deleted_returns_404(
     await db_session.refresh(soft_deleted)
 
     response = await client.delete(
-        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        f"/api/v1/badges/{soft_deleted.id}",
         cookies=auth_cookies,
     )
 
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 @pytest.fixture
@@ -1705,7 +1705,7 @@ async def test_patch_template_returns_200(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "Updated Title"},
     )
@@ -1713,7 +1713,7 @@ async def test_patch_template_returns_200(
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["message"] == "Template updated successfully."
+    assert data["message"] == "Badge updated successfully."
 
 
 async def test_patch_template_response_contains_full_object(
@@ -1722,7 +1722,7 @@ async def test_patch_template_response_contains_full_object(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "Full Response Check"},
     )
@@ -1754,7 +1754,7 @@ async def test_patch_template_updates_title(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "Brand New Title"},
     )
@@ -1771,7 +1771,7 @@ async def test_patch_template_unset_fields_unchanged(
     original_canvas = patch_target.canvas_data
 
     await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "Title Only"},
     )
@@ -1787,7 +1787,7 @@ async def test_patch_template_replaces_hashtags(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"hashtags": ["#NewTag", "#Another"]},
     )
@@ -1802,7 +1802,7 @@ async def test_patch_template_clears_hashtags_with_empty_list(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"hashtags": []},
     )
@@ -1817,7 +1817,7 @@ async def test_patch_template_omitting_hashtags_leaves_them_unchanged(
     patch_target: Badge,
 ) -> None:
     await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "No Hashtag Key"},
     )
@@ -1834,7 +1834,7 @@ async def test_patch_template_unauthenticated(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         json={"title": "No Auth"},
     )
 
@@ -1846,13 +1846,13 @@ async def test_patch_template_not_found(
     auth_cookies: dict[str, str],
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{uuid.uuid4()}",
+        f"/api/v1/badges/{uuid.uuid4()}",
         cookies=auth_cookies,
         json={"title": "Ghost"},
     )
 
     assert response.status_code == 404
-    assert response.json()["message"] == "Template not found."
+    assert response.json()["message"] == "Badge not found."
 
 
 async def test_patch_template_not_owner(
@@ -1895,13 +1895,13 @@ async def test_patch_template_not_owner(
     await db_session.refresh(other)
 
     response = await client.patch(
-        f"/api/v1/templates/organizer/{template.id}",
+        f"/api/v1/badges/{template.id}",
         cookies={settings.ACCESS_COOKIE: create_access_token(other.id)},
         json={"title": "Hijacked"},
     )
 
     assert response.status_code == 403
-    assert response.json()["message"] == "You do not own this template."
+    assert response.json()["message"] == "You do not own this badge."
 
 
 async def test_patch_template_empty_title_rejected(
@@ -1910,7 +1910,7 @@ async def test_patch_template_empty_title_rejected(
     patch_target: Badge,
 ) -> None:
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={"title": "   "},
     )
@@ -1928,7 +1928,7 @@ async def test_patch_template_empty_body_is_no_op(
     original_title = patch_target.title
 
     response = await client.patch(
-        f"/api/v1/templates/organizer/{patch_target.id}",
+        f"/api/v1/badges/{patch_target.id}",
         cookies=auth_cookies,
         json={},
     )
@@ -1958,7 +1958,7 @@ async def test_patch_template_soft_deleted_returns_404(
     await db_session.refresh(soft_deleted)
 
     response = await client.patch(
-        f"/api/v1/templates/organizer/{soft_deleted.id}",
+        f"/api/v1/badges/{soft_deleted.id}",
         cookies=auth_cookies,
         json={"title": "Attempt"},
     )
