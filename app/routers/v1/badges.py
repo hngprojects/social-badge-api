@@ -8,6 +8,7 @@ from app.core.exceptions import (
     BadgeNotFoundError,
     CloudinaryUploadError,
     NotBadgeOwnerError,
+    PlatformTemplateNotActiveError,
     PlatformTemplateNotFoundError,
     PublicBadgeNotFoundError,
 )
@@ -83,6 +84,10 @@ def _is_valid_image(data: bytes) -> bool:
                 }
             },
         },
+        400: {
+            "model": ErrorResponse,
+            "description": "Platform template is not active.",
+        },
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
         404: {"model": ErrorResponse, "description": "Platform template not found."},
         422: {"model": ErrorResponse, "description": "Validation error."},
@@ -108,6 +113,11 @@ async def create_instance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Platform template not found.",
         ) from exc
+    except PlatformTemplateNotActiveError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Platform template is not active.",
+        ) from exc
 
     assert instance.created_at is not None  # noqa: S101
     return SuccessResponse(
@@ -128,7 +138,7 @@ async def create_instance(
     summary="List organiser badges",
     description=(
         "Returns a paginated list of all badges owned by the "
-        "authenticated organiser. Soft-deleted templates are excluded. "
+        "authenticated organiser. Soft-deleted badges are excluded. "
         "Each item includes a computed status field ('draft' or 'published'). "
         "Results are ordered by most recently updated first."
     ),
@@ -141,7 +151,7 @@ async def create_instance(
                         "status": "success",
                         "message": "Badges retrieved successfully.",
                         "data": {
-                            "templates": [
+                            "badges": [
                                 {
                                     "id": "019e1b66-c4...fe4f9c84",
                                     "title": "HNG Tech Fest 2026",
@@ -178,7 +188,7 @@ async def list_instances(
     limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
 ) -> SuccessResponse[BadgeListResponse]:
     """Return paginated badges for the authenticated organiser."""
-    templates, total = await list_badges(
+    badges, total = await list_badges(
         session=session,
         organiser_id=current_user.id,
         page=page,
@@ -198,9 +208,7 @@ async def list_instances(
     return SuccessResponse(
         message="Badges retrieved successfully.",
         data=BadgeListResponse(
-            templates=[
-                BadgeSummary.model_validate(org_template) for org_template in templates
-            ],
+            badges=[BadgeSummary.model_validate(org_badge) for org_badge in badges],
             total=total,
             page=page,
             limit=limit,
@@ -214,7 +222,7 @@ async def list_instances(
     "/{id}/publish",
     response_model=SuccessResponse[PublishedBadgeResponse],
     status_code=status.HTTP_200_OK,
-    summary="Publish an badge",
+    summary="Publish a badge",
     description=(
         "Publishes the organiser's badge. Sets is_published to true, "
         "records the publish time, and generates a unique share slug on "
@@ -236,9 +244,9 @@ async def publish(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[PublishedBadgeResponse]:
-    """Publish an badge."""
+    """Publish a badge."""
     try:
-        template = await publish_badge(
+        badge = await publish_badge(
             session=session,
             organiser_id=current_user.id,
             id=id,
@@ -261,7 +269,7 @@ async def publish(
 
     return SuccessResponse(
         message="Badge published successfully.",
-        data=PublishedBadgeResponse.model_validate(template),
+        data=PublishedBadgeResponse.model_validate(badge),
     )
 
 
@@ -269,7 +277,7 @@ async def publish(
     "/{id}/unpublish",
     response_model=SuccessResponse[PublishedBadgeResponse],
     status_code=status.HTTP_200_OK,
-    summary="Unpublish an badge",
+    summary="Unpublish a badge",
     description=(
         "Unpublishes the organiser's badge. Sets is_published to false. "
         "The share slug is preserved so re-publishing later keeps the same URL."
@@ -289,9 +297,9 @@ async def unpublish(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[PublishedBadgeResponse]:
-    """Unpublish an badge."""
+    """Unpublish a badge."""
     try:
-        template = await unpublish_badge(
+        badge = await unpublish_badge(
             session=session,
             organiser_id=current_user.id,
             id=id,
@@ -309,7 +317,7 @@ async def unpublish(
 
     return SuccessResponse(
         message="Badge unpublished successfully.",
-        data=PublishedBadgeResponse.model_validate(template),
+        data=PublishedBadgeResponse.model_validate(badge),
     )
 
 
@@ -317,7 +325,7 @@ async def unpublish(
     "/{id}/duplicate",
     response_model=SuccessResponse[DuplicateBadgeResponse],
     status_code=status.HTTP_201_CREATED,
-    summary="Duplicate an badge",
+    summary="Duplicate a badge",
     description=(
         "Creates a draft copy of the organiser's badge. "
         "The copy receives a new unique ID, inherits all configuration "
@@ -339,7 +347,7 @@ async def duplicate(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[DuplicateBadgeResponse]:
-    """Duplicate an badge into a new draft."""
+    """Duplicate a badge into a new draft."""
     try:
         copy = await duplicate_badge(
             session=session,
@@ -366,7 +374,7 @@ async def duplicate(
 @router.delete(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete an badge",
+    summary="Delete a badge",
     description=(
         "Permanently removes the badge and all associated records "
         "(badges, hashtags) from the database. The Cloudinary logo and any "
@@ -383,13 +391,13 @@ async def duplicate(
     },
 )
 @limiter.limit("30/minute")
-async def delete_template(
+async def remove_badge(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
     id: UUID,
 ) -> None:
-    """Permanently delete an badge and its Cloudinary assets."""
+    """Permanently delete a badge and its Cloudinary assets."""
     try:
         await delete_badge(
             session=session,
@@ -412,13 +420,13 @@ async def delete_template(
     "/{id}",
     response_model=SuccessResponse[BadgeDetailResponse],
     status_code=status.HTTP_200_OK,
-    summary="Edit an badge",
+    summary="Edit a badge",
     description=(
-        "Partially updates an badge. Only fields present in the "
+        "Partially updates a badge. Only fields present in the "
         "request body are written to the database — absent fields are left "
         "unchanged. To clear a nullable field send it explicitly as null. "
         "To replace hashtags include the full desired list; omit the key "
-        "entirely to leave hashtags unchanged. Returns the full updated template."
+        "entirely to leave hashtags unchanged. Returns the full updated badge."
     ),
     responses={
         200: {"description": "Badge updated successfully."},
@@ -430,20 +438,20 @@ async def delete_template(
     },
 )
 @limiter.limit("30/minute")
-async def edit_template(
+async def update_badge(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
     id: UUID,
     payload: EditBadgeRequest,
 ) -> SuccessResponse[BadgeDetailResponse]:
-    """Apply a partial update to an badge."""
+    """Apply a partial update to a badge."""
     field_updates = payload.model_dump(exclude_unset=True)
     new_hashtags: list[str] | None = field_updates.pop("hashtags", None)
     update_hashtags: bool = "hashtags" in payload.model_fields_set
 
     try:
-        template = await edit_badge(
+        badge = await edit_badge(
             session=session,
             organiser_id=current_user.id,
             id=id,
@@ -464,7 +472,7 @@ async def edit_template(
 
     return SuccessResponse(
         message="Badge updated successfully.",
-        data=BadgeDetailResponse.model_validate(template),
+        data=BadgeDetailResponse.model_validate(badge),
     )
 
 
@@ -475,7 +483,7 @@ async def edit_template(
     summary="Upload a logo for a badge",
     description=(
         "Accepts a multipart/form-data upload with a single PNG or JPG image "
-        "(max 2 MB). Stores the file in Cloudinary under the template-logos/ "
+        "(max 2 MB). Stores the file in Cloudinary under the badge-logos/ "
         "folder and returns the resulting URL. If the instance already has a "
         "logo, the new file is uploaded and persisted first, then the old "
         "Cloudinary asset is deleted. "
@@ -490,7 +498,7 @@ async def edit_template(
                         "status": "success",
                         "message": "Logo uploaded successfully.",
                         "data": {
-                            "logo_url": "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png"
+                            "logo_url": "https://res.cloudinary.com/demo/image/upload/badge-logos/abc.png"
                         },
                     }
                 }
@@ -579,7 +587,7 @@ async def upload_logo(
     status_code=status.HTTP_200_OK,
     summary="Get public participant page data",
     description=(
-        "Returns the public-facing template data needed to render the participant "
+        "Returns the public-facing badge data needed to render the participant "
         "page. No authentication required. Only returns data for published "
         "templates — unpublished slugs return 404. Exposes only the fields "
         "needed for public rendering, not organiser configuration internals."
@@ -595,7 +603,7 @@ async def upload_logo(
                         "data": {
                             "title": "HNG Tech Fest 2026",
                             "canvas_data": {"layout": "bold-v1"},
-                            "logo_url": "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png",
+                            "logo_url": "https://res.cloudinary.com/demo/image/upload/badge-logos/abc.png",
                             "default_caption": "I'm attending HNG Tech Fest 2026!",
                             "destination_link": "https://techfest.example.com",
                             "hashtags": ["#HNGTechFest", "#2026"],
@@ -606,7 +614,7 @@ async def upload_logo(
         },
         404: {
             "model": ErrorResponse,
-            "description": "Slug not found or template is not published.",
+            "description": "Slug not found or badge is not published.",
         },
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
@@ -617,9 +625,9 @@ async def get_participant_page(
     session: DBSession,
     slug: str,
 ) -> SuccessResponse[PublicBadgePageResponse]:
-    """Return public-facing template data for the participant page."""
+    """Return public-facing badge data for the participant page."""
     try:
-        template = await get_public_badge_by_slug(
+        badge = await get_public_badge_by_slug(
             session=session,
             slug=slug,
         )
@@ -632,11 +640,11 @@ async def get_participant_page(
     return SuccessResponse(
         message="Badge data retrieved successfully.",
         data=PublicBadgePageResponse(
-            title=template.title,
-            canvas_data=template.canvas_data,
-            logo_url=template.logo_url,
-            default_caption=template.default_caption,
-            destination_link=template.destination_link,
-            hashtags=[h.hashtag for h in template.hashtags],
+            title=badge.title,
+            canvas_data=badge.canvas_data,
+            logo_url=badge.logo_url,
+            default_caption=badge.default_caption,
+            destination_link=badge.destination_link,
+            hashtags=[h.hashtag for h in badge.hashtags],
         ),
     )

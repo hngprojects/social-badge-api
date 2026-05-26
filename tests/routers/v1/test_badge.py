@@ -1181,7 +1181,7 @@ async def test_list_instances_success(
     assert data["status"] == "success"
     assert data["message"] == "Badges retrieved successfully."
     assert data["data"]["total"] == 3
-    assert len(data["data"]["templates"]) == 3
+    assert len(data["data"]["badges"]) == 3
 
 
 async def test_list_instances_response_shape(
@@ -1194,7 +1194,7 @@ async def test_list_instances_response_shape(
         cookies=auth_cookies,
     )
 
-    item = response.json()["data"]["templates"][0]
+    item = response.json()["data"]["badges"][0]
     expected_keys = {
         "id",
         "title",
@@ -1220,7 +1220,7 @@ async def test_list_instances_status_field_draft(
         cookies=auth_cookies,
     )
 
-    items = response.json()["data"]["templates"]
+    items = response.json()["data"]["badges"]
     draft_items = [t for t in items if not t["is_published"]]
     assert all(t["status"] == "draft" for t in draft_items)
 
@@ -1235,7 +1235,7 @@ async def test_list_instances_status_field_published(
         cookies=auth_cookies,
     )
 
-    items = response.json()["data"]["templates"]
+    items = response.json()["data"]["badges"]
     published_items = [t for t in items if t["is_published"]]
     assert all(t["status"] == "published" for t in published_items)
 
@@ -1251,7 +1251,7 @@ async def test_list_instances_canvas_data_not_exposed(
         cookies=auth_cookies,
     )
 
-    for item in response.json()["data"]["templates"]:
+    for item in response.json()["data"]["badges"]:
         assert "canvas_data" not in item
 
 
@@ -1266,7 +1266,7 @@ async def test_list_instances_empty_when_no_templates(
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["templates"] == []
+    assert data["badges"] == []
     assert data["total"] == 0
     assert data["prev"] is None
     assert data["next"] is None
@@ -1313,7 +1313,7 @@ async def test_list_instances_excludes_soft_deleted(
 
     data = response.json()["data"]
     assert data["total"] == 1
-    assert data["templates"][0]["title"] == "Live Template"
+    assert data["badges"][0]["title"] == "Live Template"
 
 
 async def test_list_instances_only_returns_current_users_templates(
@@ -1359,7 +1359,7 @@ async def test_list_instances_only_returns_current_users_templates(
 
     data = response.json()["data"]
     assert data["total"] == 1
-    assert data["templates"][0]["title"] == "My Template"
+    assert data["badges"][0]["title"] == "My Template"
 
 
 async def test_list_instances_pagination_prev_next_links(
@@ -1390,7 +1390,7 @@ async def test_list_instances_pagination_prev_next_links(
     assert data["page"] == 2
     assert data["limit"] == 2
     assert data["total"] == 5
-    assert len(data["templates"]) == 2
+    assert len(data["badges"]) == 2
     assert "page=1" in data["prev"]
     assert "page=3" in data["next"]
 
@@ -1532,7 +1532,8 @@ async def test_delete_template_removes_from_db(
     )
 
     result = await db_session.get(Badge, id)
-    assert result is None
+    assert result is not None
+    assert result.deleted_at is not None
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from app.core.exceptions import PlatformTemplateNotFoundError
 from app.core.rate_limit import limiter
 from app.dependencies import DBSession
-from app.schemas.badge import (
+from app.schemas.platform_template import (
     PlatformTemplateListResponse,
     PlatformTemplateResponse,
 )
@@ -101,6 +101,9 @@ async def list_templates(
 ) -> SuccessResponse[PlatformTemplateListResponse]:
     """Return active platform templates with pagination and optional category filter."""
     normalised_category = category.strip().lower() if category is not None else None
+    if normalised_category == "":
+        normalised_category = None
+
     try:
         templates, total = await list_platform_templates(
             session,

@@ -14,6 +14,7 @@ from app.core.exceptions import (
     BadgeNotFoundError,
     CloudinaryUploadError,
     NotBadgeOwnerError,
+    PlatformTemplateNotActiveError,
     PlatformTemplateNotFoundError,
     PublicBadgeNotFoundError,
 )
@@ -49,11 +50,16 @@ async def create_badge(
     platform_template_id: UUID,
 ) -> Badge:
     result = await session.execute(
-        select(PlatformTemplate).where(PlatformTemplate.id == platform_template_id)
+        select(PlatformTemplate).where(
+            PlatformTemplate.id == platform_template_id,
+        )
     )
     platform_template = result.scalars().first()
     if platform_template is None:
         raise PlatformTemplateNotFoundError
+
+    if not platform_template.is_active:
+        raise PlatformTemplateNotActiveError
 
     instance = Badge(
         organiser_id=organiser_id,
@@ -405,7 +411,9 @@ async def delete_badge(
 
     logo_public_id = template.logo_public_id
 
-    await session.delete(template)
+    template.deleted_at = datetime.now(UTC)
+    template.is_published = False
+    template.published_at = None
     await session.commit()
 
     logger.info(

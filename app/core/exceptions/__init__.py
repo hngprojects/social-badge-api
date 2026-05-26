@@ -13,6 +13,7 @@ from app.core.exceptions.base import (
     InvalidPasswordResetTokenError,
     InvalidRefreshTokenError,
     NotBadgeOwnerError,
+    PlatformTemplateNotActiveError,
     PlatformTemplateNotFoundError,
     PublicBadgeNotFoundError,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "BadgeAlreadyPublishedError",
     "AccountLockedError",
     "NotBadgeOwnerError",
+    "PlatformTemplateNotActiveError",
     "PlatformTemplateNotFoundError",
     "PublicBadgeNotFoundError",
     "CloudinaryUploadError",

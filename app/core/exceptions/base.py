@@ -61,6 +61,12 @@ class PlatformTemplateNotFoundError(Exception):
     pass
 
 
+class PlatformTemplateNotActiveError(Exception):
+    """Raised when attempting to create a badge from an inactive platform template."""
+
+    pass
+
+
 class BadgeNotFoundError(Exception):
     """Raised when a referenced organiser template does not exist."""
 

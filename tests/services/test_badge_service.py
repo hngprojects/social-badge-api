@@ -623,7 +623,7 @@ async def bare_template(
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
-async def test_delete_removes_template_from_db(
+async def test_delete_soft_deletes_template(
     _mock_delete: AsyncMock,
     db_session: AsyncSession,
     organiser: User,
@@ -638,11 +638,13 @@ async def test_delete_removes_template_from_db(
     )
 
     result = await db_session.get(Badge, id)
-    assert result is None
+    assert result is not None
+    assert result.deleted_at is not None
+    assert result.is_published is False
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
-async def test_delete_cascades_hashtags_from_db(
+async def test_delete_leaves_hashtags_intact(
     _mock_delete: AsyncMock,
     db_session: AsyncSession,
     organiser: User,
@@ -670,7 +672,7 @@ async def test_delete_cascades_hashtags_from_db(
     result = await db_session.execute(
         select(BadgeHashtag).where(BadgeHashtag.badge_id == id)
     )
-    assert result.scalars().all() == []
+    assert len(result.scalars().all()) == 1
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
@@ -722,9 +724,10 @@ async def test_delete_continues_when_logo_cloudinary_fails(
         id=id,
     )
 
-    # Template is gone from DB despite Cloudinary failure
+    # Template is soft-deleted despite Cloudinary failure
     result = await db_session.get(Badge, id)
-    assert result is None
+    assert result is not None
+    assert result.deleted_at is not None
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
