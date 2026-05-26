@@ -9,8 +9,8 @@ from uuid_utils import uuid7 as _uuid7
 from app.models.base import Base
 
 if TYPE_CHECKING:
-    from app.models import OrganiserTemplate
     from app.models.auth import AuthProvider, RefreshToken
+    from app.models.badges import Badge
     from app.models.roles import Role, UserRole
 
 
@@ -51,9 +51,9 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
-    # Relationship to OrganiserTemplate
-    organiser_templates: Mapped[list["OrganiserTemplate"]] = relationship(
-        "OrganiserTemplate",
+    # Relationship to Badge
+    badges: Mapped[list["Badge"]] = relationship(
+        "Badge",
         back_populates="organiser",
         cascade="all, delete-orphan",
     )
