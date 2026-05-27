@@ -249,10 +249,26 @@ class UserResponse(BaseModel):
         return val
 
 
-class LoginResponse(BaseModel):
-    user: UserResponse = Field(
+class LoginUserResponse(BaseModel):
+    """Minimal user payload returned only on login.
+
+    Deliberately excludes internal IDs, timestamps, and third-party URLs
+    to reduce the attack surface of the authentication response.
+    """
+
+    first_name: str = Field(..., json_schema_extra={"example": "Jane"})
+    last_name: str | None = Field(None, json_schema_extra={"example": "Doe"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "jane@example.com"})
+    is_email_verified: bool = Field(
         ...,
-        description="The authenticated user's profile details.",
+        description="Kept so the frontend can redirect unverified users appropriately.",
+    )
+
+
+class LoginResponse(BaseModel):
+    user: LoginUserResponse = Field(
+        ...,
+        description="Minimal user profile returned on successful authentication.",
     )
 
 
