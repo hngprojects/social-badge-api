@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -44,6 +44,15 @@ VALID_CATEGORIES = frozenset(
 )
 
 
+async def _increment_template_badge_count(
+    session: AsyncSession, platform_template_id: UUID
+) -> None:
+    await session.execute(
+        sa_update(PlatformTemplate)
+        .where(PlatformTemplate.id == platform_template_id)
+        .values(total_badges_made=PlatformTemplate.total_badges_made + 1)
+    )
+
 async def create_badge(
     session: AsyncSession,
     organiser_id: UUID,
@@ -69,6 +78,8 @@ async def create_badge(
     )
     session.add(instance)
     await session.flush()
+    await _increment_template_badge_count(session, platform_template_id)
+
     await session.commit()
     await session.refresh(instance)
 
@@ -339,6 +350,8 @@ async def duplicate_badge(
 
     for tag in original.hashtags:
         session.add(BadgeHashtag(badge_id=copy.id, hashtag=tag.hashtag))
+
+    await _increment_template_badge_count(session, original.platform_template_id)
 
     await session.commit()
     await session.refresh(copy)

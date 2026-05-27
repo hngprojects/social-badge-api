@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from uuid_utils import uuid7 as _uuid7
@@ -28,6 +28,9 @@ class PlatformTemplate(Base):
     canvas_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    total_badges_made: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default="0"
+    )
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True
     )

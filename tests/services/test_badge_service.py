@@ -11,6 +11,7 @@ from app.core.exceptions import BadgeNotFoundError, NotBadgeOwnerError
 from app.core.security import hash_password
 from app.models import Badge, BadgeHashtag, PlatformTemplate, User
 from app.services.badge import (
+    create_badge,
     delete_badge,
     duplicate_badge,
     edit_badge,
@@ -1203,3 +1204,49 @@ async def test_analytics_usage_groups_by_template(
     assert len(usage) == 2
     assert usage[0] == (platform_template.id, 3)
     assert usage[1] == (other_template.id, 1)
+
+
+async def test_create_badge_increments_platform_template_counter(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    assert platform_template.total_badges_made == 0
+
+    await create_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 1
+
+    await create_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 2
+
+
+async def test_duplicate_badge_increments_platform_template_counter(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    badge = await create_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 1
+
+    await duplicate_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        id=badge.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 2
