@@ -1206,6 +1206,8 @@ async def test_list_instances_response_shape(
         "published_at",
         "created_at",
         "updated_at",
+        "total_shares",
+        "total_badges_created",
     }
     assert expected_keys == set(item.keys())
 
@@ -1745,6 +1747,8 @@ async def test_patch_template_response_contains_full_object(
         "hashtags",
         "created_at",
         "updated_at",
+        "total_shares",
+        "total_badges_created",
     }
     assert expected_keys == set(data.keys())
 

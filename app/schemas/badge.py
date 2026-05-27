@@ -2,7 +2,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 
 
 class CreateBadgeRequest(BaseModel):
@@ -103,7 +109,7 @@ class BadgeSummary(BaseModel):
     for rendering a dashboard card.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID = Field(..., description="Unique identifier for the template instance.")
     title: str = Field(..., description="Template title set by the organiser.")
@@ -128,6 +134,16 @@ class BadgeSummary(BaseModel):
     )
     updated_at: datetime | None = Field(
         None, description="When the template was last modified."
+    )
+    total_shares: int = Field(
+        ...,
+        validation_alias="share_count",
+        description="Total shares for this badge.",
+    )
+    total_badges_created: int = Field(
+        ...,
+        validation_alias="creation_count",
+        description="Total badges created from the public page.",
     )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -172,7 +188,7 @@ class EditBadgeRequest(BaseModel):
 
 
 class BadgeDetailResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
     title: str
@@ -189,6 +205,8 @@ class BadgeDetailResponse(BaseModel):
     hashtags: list[str]
     created_at: datetime | None
     updated_at: datetime | None
+    total_shares: int = Field(validation_alias="share_count")
+    total_badges_created: int = Field(validation_alias="creation_count")
 
     @field_validator("hashtags", mode="before")
     @classmethod

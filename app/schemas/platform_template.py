@@ -32,6 +32,9 @@ class PlatformTemplateResponse(BaseModel):
     is_active: bool = Field(
         ..., description="False means the template is hidden from the gallery."
     )
+    total_badges_made: int = Field(
+        ..., description="Total badges created from this template (platform-wide)."
+    )
     created_at: datetime | None = Field(
         None, description="When the template was created."
     )
