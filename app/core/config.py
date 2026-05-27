@@ -79,6 +79,8 @@ class Settings(BaseSettings):
 
     MAX_SLUG_RETRIES: int = 5
 
+    MAX_CONTENT_BODY_SIZE: int = 10 * 1024 * 1024  # 10 MB
+
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
 

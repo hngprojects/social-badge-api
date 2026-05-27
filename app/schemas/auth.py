@@ -75,6 +75,9 @@ class SignupRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 characters")
+
         return validate_password_strength(val)
 
 
@@ -116,6 +119,14 @@ class LoginRequest(BaseModel):
         ),
         json_schema_extra={"example": "StrongPassword1!", "minLength": 8},
     )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 characters")
+
+        return val
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -165,6 +176,9 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 characters")
+
         return validate_password_strength(val)
 
     @model_validator(mode="after")

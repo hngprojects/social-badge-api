@@ -577,6 +577,40 @@ async def test_login_validation_error(client: AsyncClient) -> None:
     assert data["status"] == "error"
 
 
+@pytest.mark.parametrize(
+    "size",
+    [500, 1000, 5_000, 100_000],
+)
+async def test_login_oversized_password_never_returns_500(
+    client: AsyncClient,
+    size: int,
+) -> None:
+    body = {"email": "victim@example.com", "password": "A" * size}
+    response = await client.post("/api/v1/auth/login", json=body)
+    assert response.status_code != 500, (
+        f"Server crashed (500) on password of length {size}"
+    )
+    assert response.status_code in (400, 401, 413, 422), (
+        f"Expected a client-error status for length {size}, got {response.status_code}"
+    )
+
+
+async def test_login_oversized_password_returns_422(client: AsyncClient) -> None:
+    body = {"email": "victim@example.com", "password": "A" * 501}
+    response = await client.post("/api/v1/auth/login", json=body)
+    assert response.status_code == 422
+    data = response.json()
+    assert data["status"] == "error"
+
+
+async def test_login_normal_password_unaffected(client: AsyncClient) -> None:
+    """Ensure the fix does not break legitimate login attempts."""
+    body = {"email": "nobody@example.com", "password": "ValidPass1!"}
+    response = await client.post("/api/v1/auth/login", json=body)
+    # No account exists — expect 401, not 422 or 500
+    assert response.status_code == 401
+
+
 async def test_login_rate_limit(
     client: AsyncClient, verified_login_user: dict[str, str]
 ) -> None:
