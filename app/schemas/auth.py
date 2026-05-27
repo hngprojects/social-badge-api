@@ -76,7 +76,7 @@ class SignupRequest(BaseModel):
     @classmethod
     def validate_password(cls, val: str) -> str:
         if len(val.encode("utf-8")) > 500:
-            raise ValueError("Password must not exceed 500 characters")
+            raise ValueError("Password must not exceed 500 bytes")
 
         return validate_password_strength(val)
 

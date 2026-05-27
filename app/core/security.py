@@ -15,14 +15,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         password_byte_enc = plain_password.encode("utf-8")
         hashed_password_byte_enc = hashed_password.encode("utf-8")
 
-        if len(hashed_password_byte_enc) > 72:
+        if len(password_byte_enc) > 72:
             return False
 
         return bcrypt.checkpw(
             password=password_byte_enc,
             hashed_password=hashed_password_byte_enc,
         )
-    except Exception:
+    except (TypeError, ValueError):
         return False
 
 

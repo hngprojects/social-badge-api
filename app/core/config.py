@@ -149,6 +149,14 @@ class Settings(BaseSettings):
 
         return self
 
+    @field_validator("MAX_CONTENT_BODY_SIZE")
+    @classmethod
+    def validate_max_content_body_size(cls, val: int) -> int:
+        if val <= 0:
+            raise ValueError("MAX_CONTENT_BODY_SIZE must be greater than 0")
+
+        return val
+
 
 @lru_cache
 def get_settings() -> Settings:

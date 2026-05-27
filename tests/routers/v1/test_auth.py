@@ -1001,7 +1001,7 @@ async def test_signup_rejects_xss_in_first_name(
     body = {
         "first_name": payload,
         "last_name": "Doe",
-        "email": f"xss_{hash(payload) % 10**8}@mailinator.com",
+        "email": f"xss_{uuid.uuid4().hex}`@mailinator.com`",
         "password": "ValidPass1!",
     }
     response = await client.post("/api/v1/auth/signup", json=body)
@@ -1020,7 +1020,7 @@ async def test_signup_rejects_xss_in_last_name(
     body = {
         "first_name": "Jane",
         "last_name": payload,
-        "email": f"xss_ln_{hash(payload) % 10**8}@mailinator.com",
+        "email": f"xss_ln_{uuid.uuid4().hex}`@mailinator.com`",
         "password": "ValidPass1!",
     }
     response = await client.post("/api/v1/auth/signup", json=body)

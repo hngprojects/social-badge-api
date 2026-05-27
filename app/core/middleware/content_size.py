@@ -43,32 +43,29 @@ class ContentSizeLimitMiddleware:
 
         # ---- Streaming protection ----
         received_size = 0
-        exceeded = False
+
+        class _PayloadTooLarge(Exception):
+            pass
 
         async def limited_receive() -> Message:
-            nonlocal received_size, exceeded
-
-            if exceeded:
-                # stop feeding body to app
-                return {"type": "http.request", "body": b"", "more_body": False}
+            nonlocal received_size
 
             message = await receive()
 
             if message["type"] == "http.request":
                 body = message.get("body", b"")
+                if received_size + len(body) > self.max_body_bytes:
+                    raise _PayloadTooLarge
                 received_size += len(body)
-
-                if received_size > self.max_body_bytes:
-                    exceeded = True
 
             return message
 
-        if exceeded:
+        try:
+            await self.app(scope, limited_receive, send)
+        except _PayloadTooLarge:
             response = JSONResponse(
                 status_code=413,
                 content={"status": "error", "message": "Request body too large"},
             )
             await response(scope, receive, send)
             return
-
-        await self.app(scope, limited_receive, send)
