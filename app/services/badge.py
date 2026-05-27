@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -479,3 +479,58 @@ async def edit_badge(
         select(Badge).options(selectinload(Badge.hashtags)).where(Badge.id == id)
     )
     return refreshed.scalars().one()
+
+
+async def get_badge_analytics(
+    session: AsyncSession,
+    organiser_id: UUID,
+) -> tuple[int, int, int, int, list[tuple[UUID, int]]]:
+    """Aggregate the authenticated organiser's badge metrics.
+
+    Performs two database round-trips:
+      1. A single SELECT that computes four scalar aggregates in one pass.
+      2. A grouped SELECT for the per-template breakdown.
+
+    Soft-deleted badges (``deleted_at IS NOT NULL``) are excluded from every
+    aggregate to stay consistent with ``list_badges``.
+
+    Returns:
+        A tuple of (total, active, total_shares, total_creations, usage_rows)
+        where ``usage_rows`` is a list of ``(platform_template_id, count)``
+        ordered by count descending.
+    """
+    base_conditions = (
+        Badge.organiser_id == organiser_id,
+        Badge.deleted_at.is_(None),
+    )
+
+    scalar_stmt = select(
+        func.count(Badge.id).label("total"),
+        func.coalesce(
+            func.sum(case((Badge.is_published.is_(True), 1), else_=0)), 0
+        ).label("active"),
+        func.coalesce(func.sum(Badge.share_count), 0).label("total_shares"),
+        func.coalesce(func.sum(Badge.creation_count), 0).label("total_creations"),
+    ).where(*base_conditions)
+
+    scalar_result = await session.execute(scalar_stmt)
+    total, active, total_shares, total_creations = scalar_result.one()
+
+    usage_stmt = (
+        select(
+            Badge.platform_template_id,
+            func.count(Badge.id).label("badge_count"),
+        )
+        .where(*base_conditions)
+        .group_by(Badge.platform_template_id)
+        .order_by(func.count(Badge.id).desc())
+    )
+    usage_rows = (await session.execute(usage_stmt)).all()
+
+    return (
+        int(total),
+        int(active),
+        int(total_shares),
+        int(total_creations),
+        [(row.platform_template_id, int(row.badge_count)) for row in usage_rows],
+    )

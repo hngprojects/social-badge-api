@@ -1965,3 +1965,99 @@ async def test_patch_template_soft_deleted_returns_404(
     )
 
     assert response.status_code == 404
+
+
+async def test_analytics_unauthenticated(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/badges/analytics")
+    assert response.status_code == 401
+
+
+async def test_analytics_empty_state(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get("/api/v1/badges/analytics", cookies=auth_cookies)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total_organiser_badges"] == 0
+    assert data["total_active_badges"] == 0
+    assert data["total_shares"] == 0
+    assert data["total_badges_created"] == 0
+    assert data["platform_template_usage"] == []
+
+
+async def test_analytics_returns_aggregated_metrics(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    from sqlalchemy import update as sa_update
+
+    b1 = Badge(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Published",
+        canvas_data={"layout_id": "v1"},
+        is_published=True,
+        share_slug="published-one",
+    )
+    b2 = Badge(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft",
+        canvas_data={"layout_id": "v1"},
+    )
+    db_session.add_all([b1, b2])
+    await db_session.commit()
+    await db_session.refresh(b1)
+    await db_session.refresh(b2)
+
+    await db_session.execute(
+        sa_update(Badge)
+        .where(Badge.id == b1.id)
+        .values(share_count=20, creation_count=50)
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/badges/analytics", cookies=auth_cookies)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total_organiser_badges"] == 2
+    assert data["total_active_badges"] == 1
+    assert data["total_shares"] == 20
+    assert data["total_badges_created"] == 50
+    assert len(data["platform_template_usage"]) == 1
+    assert data["platform_template_usage"][0]["count"] == 2
+
+
+async def test_analytics_scoped_to_current_user(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    other_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    db_session.add(
+        Badge(
+            organiser_id=test_user.id,
+            platform_template_id=platform_template.id,
+            title="Mine",
+            canvas_data={"layout_id": "v1"},
+        )
+    )
+    db_session.add(
+        Badge(
+            organiser_id=other_user.id,
+            platform_template_id=platform_template.id,
+            title="Theirs",
+            canvas_data={"layout_id": "v1"},
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/badges/analytics", cookies=auth_cookies)
+    assert response.status_code == 200
+    assert response.json()["data"]["total_organiser_badges"] == 1

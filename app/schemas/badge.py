@@ -96,7 +96,6 @@ class DuplicateBadgeResponse(BaseModel):
     created_at: datetime = Field(..., description="When the copy was created.")
 
 
-
 class BadgeSummary(BaseModel):
     """Per-item shape for the organiser's template dashboard list.
 
@@ -199,3 +198,32 @@ class BadgeDetailResponse(BaseModel):
             return []
         return [item.hashtag if hasattr(item, "hashtag") else str(item) for item in val]
 
+
+class PlatformTemplateUsage(BaseModel):
+    platform_template_id: UUID = Field(
+        ..., description="The platform template the badges are based on."
+    )
+    count: int = Field(..., description="Number of badges using this template.")
+
+
+class BadgeAnalyticsResponse(BaseModel):
+    total_organiser_badges: int = Field(
+        ...,
+        description="Total badges owned by the organiser (excluding soft-deleted).",
+    )
+    total_active_badges: int = Field(
+        ..., description="Count of currently published badges."
+    )
+    total_shares: int = Field(
+        ..., description="Sum of share_count across all the organiser's badges."
+    )
+    total_badges_created: int = Field(
+        ..., description="Sum of creation_count across all the organiser's badges."
+    )
+    platform_template_usage: list[PlatformTemplateUsage] = Field(
+        default_factory=list,
+        description=(
+            "Per-template breakdown showing how many badges the organiser has "
+            "created from each platform template."
+        ),
+    )
