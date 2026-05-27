@@ -44,6 +44,15 @@ VALID_CATEGORIES = frozenset(
 )
 
 
+async def _increment_template_badge_count(
+    session: AsyncSession, platform_template_id: UUID
+) -> None:
+    await session.execute(
+        sa_update(PlatformTemplate)
+        .where(PlatformTemplate.id == platform_template_id)
+        .values(total_badges_made=PlatformTemplate.total_badges_made + 1)
+    )
+
 async def create_badge(
     session: AsyncSession,
     organiser_id: UUID,
@@ -69,11 +78,7 @@ async def create_badge(
     )
     session.add(instance)
     await session.flush()
-    await session.execute(
-        sa_update(PlatformTemplate)
-        .where(PlatformTemplate.id == platform_template_id)
-        .values(total_badges_made=PlatformTemplate.total_badges_made + 1)
-    )
+    await _increment_template_badge_count(session, platform_template_id)
 
     await session.commit()
     await session.refresh(instance)
@@ -345,6 +350,8 @@ async def duplicate_badge(
 
     for tag in original.hashtags:
         session.add(BadgeHashtag(badge_id=copy.id, hashtag=tag.hashtag))
+
+    await _increment_template_badge_count(session, original.platform_template_id)
 
     await session.commit()
     await session.refresh(copy)

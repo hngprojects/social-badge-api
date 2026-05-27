@@ -1228,3 +1228,25 @@ async def test_create_badge_increments_platform_template_counter(
     )
     await db_session.refresh(platform_template)
     assert platform_template.total_badges_made == 2
+
+
+async def test_duplicate_badge_increments_platform_template_counter(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    badge = await create_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        platform_template_id=platform_template.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 1
+
+    await duplicate_badge(
+        session=db_session,
+        organiser_id=organiser.id,
+        id=badge.id,
+    )
+    await db_session.refresh(platform_template)
+    assert platform_template.total_badges_made == 2
