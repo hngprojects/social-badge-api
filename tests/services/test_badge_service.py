@@ -14,6 +14,7 @@ from app.services.badge import (
     delete_badge,
     duplicate_badge,
     edit_badge,
+    get_badge_analytics,
     list_badges,
 )
 
@@ -1054,3 +1055,151 @@ async def test_edit_raises_not_owner(
             new_hashtags=None,
             update_hashtags=False,
         )
+
+
+async def test_analytics_empty_returns_zeros(
+    db_session: AsyncSession,
+    organiser: User,
+) -> None:
+    total, active, shares, creations, usage = await get_badge_analytics(
+        session=db_session, organiser_id=organiser.id
+    )
+    assert total == 0
+    assert active == 0
+    assert shares == 0
+    assert creations == 0
+    assert usage == []
+
+
+async def test_analytics_single_draft_badge(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(db_session, organiser, platform_template, title="Draft")
+
+    total, active, shares, creations, usage = await get_badge_analytics(
+        session=db_session, organiser_id=organiser.id
+    )
+    assert total == 1
+    assert active == 0
+    assert shares == 0
+    assert creations == 0
+    assert len(usage) == 1
+    assert usage[0] == (platform_template.id, 1)
+
+
+async def test_analytics_counts_published_as_active(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(
+        db_session, organiser, platform_template, title="A", is_published=True
+    )
+    await _make_template(
+        db_session, organiser, platform_template, title="B", is_published=False
+    )
+    await _make_template(
+        db_session, organiser, platform_template, title="C", is_published=True
+    )
+
+    total, active, *_ = await get_badge_analytics(
+        session=db_session, organiser_id=organiser.id
+    )
+    assert total == 3
+    assert active == 2
+
+
+async def test_analytics_sums_share_and_creation_counts(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    b1 = await _make_template(db_session, organiser, platform_template, title="A")
+    b2 = await _make_template(db_session, organiser, platform_template, title="B")
+
+    from sqlalchemy import update as sa_update
+
+    await db_session.execute(
+        sa_update(Badge)
+        .where(Badge.id == b1.id)
+        .values(share_count=10, creation_count=25)
+    )
+    await db_session.execute(
+        sa_update(Badge)
+        .where(Badge.id == b2.id)
+        .values(share_count=5, creation_count=12)
+    )
+    await db_session.commit()
+
+    _, _, shares, creations, _ = await get_badge_analytics(
+        session=db_session, organiser_id=organiser.id
+    )
+    assert shares == 15
+    assert creations == 37
+
+
+async def test_analytics_excludes_soft_deleted(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    await _make_template(db_session, organiser, platform_template, title="Alive")
+    await _make_template(
+        db_session, organiser, platform_template, title="Gone", deleted=True
+    )
+
+    total, *_, usage = await get_badge_analytics(
+        session=db_session, organiser_id=organiser.id
+    )
+    assert total == 1
+    assert usage == [(platform_template.id, 1)]
+
+
+async def test_analytics_excludes_other_organisers(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    other = User(
+        first_name="Other",
+        last_name="Organiser",
+        email="other-analytics@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+    )
+    db_session.add(other)
+    await db_session.commit()
+    await db_session.refresh(other)
+
+    await _make_template(db_session, organiser, platform_template, title="Mine")
+    await _make_template(db_session, other, platform_template, title="Theirs")
+
+    total, *_ = await get_badge_analytics(session=db_session, organiser_id=organiser.id)
+    assert total == 1
+
+
+async def test_analytics_usage_groups_by_template(
+    db_session: AsyncSession,
+    organiser: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    other_template = PlatformTemplate(
+        title="Other",
+        category="hackathons",
+        canvas_data={"layout_id": "v1"},
+        is_active=True,
+    )
+    db_session.add(other_template)
+    await db_session.commit()
+    await db_session.refresh(other_template)
+    await _make_template(db_session, organiser, platform_template, title="A")
+    await _make_template(db_session, organiser, platform_template, title="B")
+    await _make_template(db_session, organiser, platform_template, title="C")
+    await _make_template(db_session, organiser, other_template, title="D")
+
+    *_, usage = await get_badge_analytics(session=db_session, organiser_id=organiser.id)
+    assert len(usage) == 2
+    assert usage[0] == (platform_template.id, 3)
+    assert usage[1] == (other_template.id, 1)

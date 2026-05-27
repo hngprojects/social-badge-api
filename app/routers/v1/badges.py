@@ -15,6 +15,7 @@ from app.core.exceptions import (
 from app.core.rate_limit import limiter
 from app.dependencies import CurrentUser, DBSession
 from app.schemas.badge import (
+    BadgeAnalyticsResponse,
     BadgeDetailResponse,
     BadgeListResponse,
     BadgeSummary,
@@ -23,6 +24,7 @@ from app.schemas.badge import (
     DuplicateBadgeResponse,
     EditBadgeRequest,
     LogoUploadResponse,
+    PlatformTemplateUsage,
     PublicBadgePageResponse,
     PublishedBadgeResponse,
 )
@@ -32,6 +34,7 @@ from app.services.badge import (
     delete_badge,
     duplicate_badge,
     edit_badge,
+    get_badge_analytics,
     get_public_badge_by_slug,
     list_badges,
     publish_badge,
@@ -214,6 +217,84 @@ async def list_instances(
             limit=limit,
             prev=prev_link,
             next=next_link,
+        ),
+    )
+
+
+@router.get(
+    "/analytics",
+    response_model=SuccessResponse[BadgeAnalyticsResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get organiser badge analytics",
+    description=(
+        "Returns aggregated metrics across all badges owned by the "
+        "authenticated organiser. Includes total badge count, active "
+        "(published) badge count, total share interactions, total badges "
+        "created from public pages, and a per-platform-template usage "
+        "breakdown. Soft-deleted badges are excluded from every aggregate."
+    ),
+    responses={
+        200: {
+            "description": "Analytics retrieved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Analytics retrieved successfully.",
+                        "data": {
+                            "total_organiser_badges": 4,
+                            "total_active_badges": 2,
+                            "total_shares": 87,
+                            "total_badges_created": 152,
+                            "platform_template_usage": [
+                                {
+                                    "platform_template_id": (
+                                        "019e1b66-c4ec-7b80-8c85-84c2fe4f9c00"
+                                    ),
+                                    "count": 3,
+                                },
+                                {
+                                    "platform_template_id": (
+                                        "019e1b66-c4ec-7b80-8c85-84c2fe4f9c11"
+                                    ),
+                                    "count": 1,
+                                },
+                            ],
+                        },
+                    }
+                }
+            },
+        },
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def get_analytics(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+) -> SuccessResponse[BadgeAnalyticsResponse]:
+    """Return aggregated badge metrics for the authenticated organiser."""
+    (
+        total,
+        active,
+        total_shares,
+        total_creations,
+        usage_rows,
+    ) = await get_badge_analytics(session=session, organiser_id=current_user.id)
+
+    return SuccessResponse(
+        message="Analytics retrieved successfully.",
+        data=BadgeAnalyticsResponse(
+            total_organiser_badges=total,
+            total_active_badges=active,
+            total_shares=total_shares,
+            total_badges_created=total_creations,
+            platform_template_usage=[
+                PlatformTemplateUsage(platform_template_id=tid, count=count)
+                for tid, count in usage_rows
+            ],
         ),
     )
 
