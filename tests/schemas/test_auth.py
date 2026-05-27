@@ -100,6 +100,23 @@ def test_login_request_invalid_email() -> None:
         LoginRequest(email="not-an-email", password="StrongPassword1!")  # noqa: S106
 
 
+def test_login_request_rejects_password_over_500_bytes() -> None:
+    with pytest.raises(ValidationError, match="must not exceed 500 characters"):
+        LoginRequest(email="user@example.com", password="A" * 501)
+
+
+def test_login_request_rejects_multibyte_password_over_500_bytes() -> None:
+    # Each '€' is 3 UTF-8 bytes; 334 chars = 502 bytes
+    with pytest.raises(ValidationError, match="must not exceed 500 characters"):
+        LoginRequest(email="user@example.com", password="€" * 334)
+
+
+def test_login_request_accepts_password_at_boundary() -> None:
+    # Exactly 500 ASCII chars — must pass schema validation
+    req = LoginRequest(email="user@example.com", password="A" * 500)
+    assert len(req.password) == 500
+
+
 # ---------------------------------------------------------------------------
 # UserResponse tests
 # ---------------------------------------------------------------------------

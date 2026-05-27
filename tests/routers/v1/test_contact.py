@@ -154,7 +154,7 @@ async def test_contact_endpoint_success(
     client: AsyncClient,
     valid_contact_payload: dict[str, str],
 ) -> None:
-    response = await client.post("/api/v1/contact/", json=valid_contact_payload)
+    response = await client.post("/api/v1/contact", json=valid_contact_payload)
     assert response.status_code == 201
 
     data = response.json()
@@ -186,7 +186,7 @@ async def test_contact_endpoint_without_last_name(
         "subject": "feedback",
         "message": "This is a valid contact message for testing.",
     }
-    response = await client.post("/api/v1/contact/", json=payload)
+    response = await client.post("/api/v1/contact", json=payload)
     assert response.status_code == 201
 
     # Verify last_name was passed as None to the notification
@@ -201,7 +201,7 @@ async def test_contact_endpoint_validation_error(client: AsyncClient) -> None:
         "subject": "invalid",
         "message": "short",
     }
-    response = await client.post("/api/v1/contact/", json=payload)
+    response = await client.post("/api/v1/contact", json=payload)
     assert response.status_code == 422
 
     data = response.json()
@@ -209,7 +209,7 @@ async def test_contact_endpoint_validation_error(client: AsyncClient) -> None:
 
 
 async def test_contact_endpoint_missing_required_fields(client: AsyncClient) -> None:
-    response = await client.post("/api/v1/contact/", json={})
+    response = await client.post("/api/v1/contact", json={})
     assert response.status_code == 422
 
 
@@ -224,7 +224,7 @@ async def test_contact_endpoint_email_delivery_failure(
 ) -> None:
     mock_notification.side_effect = EmailDeliveryError("Resend API down")
 
-    response = await client.post("/api/v1/contact/", json=valid_contact_payload)
+    response = await client.post("/api/v1/contact", json=valid_contact_payload)
     assert response.status_code == 502
 
     data = response.json()
@@ -249,7 +249,7 @@ async def test_contact_endpoint_confirmation_failure_still_succeeds(
     """If the confirmation email fails, the request should still succeed."""
     mock_confirmation.side_effect = RuntimeError("Unexpected error")
 
-    response = await client.post("/api/v1/contact/", json=valid_contact_payload)
+    response = await client.post("/api/v1/contact", json=valid_contact_payload)
     assert response.status_code == 201
 
     data = response.json()
@@ -272,10 +272,10 @@ async def test_contact_endpoint_rate_limit(
     valid_contact_payload: dict[str, str],
 ) -> None:
     for _ in range(5):
-        await client.post("/api/v1/contact/", json=valid_contact_payload)
+        await client.post("/api/v1/contact", json=valid_contact_payload)
 
     # 6th request should be rate-limited
-    response = await client.post("/api/v1/contact/", json=valid_contact_payload)
+    response = await client.post("/api/v1/contact", json=valid_contact_payload)
     assert response.status_code == 429
 
     data = response.json()

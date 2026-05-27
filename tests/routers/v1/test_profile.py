@@ -520,10 +520,10 @@ async def test_upload_profile_photo_file_too_large(
         files={"file": ("large.png", large_image_data, "image/png")},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 413
     data = response.json()
     assert data["status"] == "error"
-    assert "exceeds maximum" in data["message"]
+    assert "too large" in data["message"]
 
 
 @patch("app.services.profile.upload_logo", new_callable=AsyncMock)

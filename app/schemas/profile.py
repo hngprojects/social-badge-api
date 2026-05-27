@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.sanitizer import validate_no_html
+
 
 class UpdateProfileRequest(BaseModel):
     """Request schema for updating user profile."""
@@ -20,16 +22,26 @@ class UpdateProfileRequest(BaseModel):
     @field_validator("first_name")
     @classmethod
     def validate_first_name(cls, val: str | None) -> str | None:
-        if val is not None and not val.strip():
-            raise ValueError("First name cannot be empty")
-        return val.strip() if val else None
+        if val is not None:
+            val = val.strip()
+            if not val:
+                raise ValueError("First name cannot be empty")
+
+            validate_no_html(val, "First name")
+
+        return val
 
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
         if val is None:
             return None
-        return val.strip() if val.strip() else None
+
+        val = val.strip()
+        if val:
+            validate_no_html(val, "Last name")
+
+        return val if val else None
 
 
 class DeleteProfileResponse(BaseModel):

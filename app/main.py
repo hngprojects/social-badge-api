@@ -9,6 +9,7 @@ from fastapi.requests import Request
 import app.core.pillow as _pillow_init  # noqa: F401 — must precede any Image.open() call
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.middleware import ContentSizeLimitMiddleware
 from app.core.rate_limit import limiter
 from app.db.redis import redis_pool
 from app.routers.v1 import api_router
@@ -39,6 +40,11 @@ app.add_middleware(
         "Origin",
     ],
     expose_headers=["Content-Length"],
+)
+
+app.add_middleware(
+    ContentSizeLimitMiddleware,
+    max_body_bytes=settings.MAX_CONTENT_BODY_SIZE,
 )
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
