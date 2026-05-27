@@ -208,7 +208,7 @@ async def register(
         },
     },
 )
-@limiter.limit("5/minute")
+@limiter.limit("3/minute")
 async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
@@ -326,7 +326,7 @@ async def reset_organizer_password(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 async def login(
     request: Request,
     payload: LoginRequest,
@@ -505,7 +505,7 @@ async def logout(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/minute")
+@limiter.limit("3/minute")
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,

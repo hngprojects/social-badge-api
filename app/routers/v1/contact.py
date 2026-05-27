@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/",
+    "",
     response_model=SuccessResponse[ContactResponse],
     status_code=status.HTTP_201_CREATED,
     summary="Submit a contact form message",
