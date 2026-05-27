@@ -20,6 +20,17 @@ from app.models.auth import RefreshToken
 from app.models.users import User
 from app.schemas.auth import ResetPasswordRequest
 
+_XSS_PAYLOADS = [
+    "<script>alert('XSS')</script>",
+    "<img src=x onerror=alert(1)>",
+    "<svg onload=alert(1)>",
+    "javascript:alert(1)",
+    "<a href='javascript:void(0)' onclick=alert(1)>click</a>",
+    "<SCRIPT>alert('xss')</SCRIPT>",
+    "data:text/html,<script>alert(1)</script>",
+    "<body onload=alert(1)>",
+]
+
 
 @pytest.fixture
 def valid_signup_payload() -> dict[str, str]:
@@ -946,3 +957,78 @@ async def test_google_callback_stores_refresh_token_metadata(
     assert token.user_agent == "GoogleAgent/3.0"
     assert token.ip_address == "99.88.77.66"
     assert token.last_used_at is not None
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_signup_rejects_xss_in_first_name(
+    client: AsyncClient,
+    payload: str,
+) -> None:
+    body = {
+        "first_name": payload,
+        "last_name": "Doe",
+        "email": f"xss_{hash(payload) % 10**8}@mailinator.com",
+        "password": "ValidPass1!",
+    }
+    response = await client.post("/api/v1/auth/signup", json=body)
+    assert response.status_code == 422, (
+        f"Expected 422 for first_name={payload!r}, got {response.status_code}"
+    )
+    data = response.json()
+    assert data["status"] == "error"
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_signup_rejects_xss_in_last_name(
+    client: AsyncClient,
+    payload: str,
+) -> None:
+    body = {
+        "first_name": "Jane",
+        "last_name": payload,
+        "email": f"xss_ln_{hash(payload) % 10**8}@mailinator.com",
+        "password": "ValidPass1!",
+    }
+    response = await client.post("/api/v1/auth/signup", json=body)
+    assert response.status_code == 422, (
+        f"Expected 422 for last_name={payload!r}, got {response.status_code}"
+    )
+    data = response.json()
+    assert data["status"] == "error"
+
+
+@patch("app.services.auth.send_verification_email", new_callable=AsyncMock)
+async def test_signup_accepts_clean_names(
+    _mock_email: AsyncMock,
+    client: AsyncClient,
+) -> None:
+    body = {
+        "first_name": "Jane",
+        "last_name": "O'Brien-Smith",
+        "email": "clean_name@mailinator.com",
+        "password": "ValidPass1!",
+    }
+    response = await client.post("/api/v1/auth/signup", json=body)
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_update_profile_rejects_xss_in_first_name(
+    client: AsyncClient,
+    payload: str,
+    verified_login_user: dict,
+) -> None:
+    await client.post("/api/v1/auth/login", json=verified_login_user)
+    response = await client.put("/api/v1/profile/", json={"first_name": payload})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_update_profile_rejects_xss_in_last_name(
+    client: AsyncClient,
+    payload: str,
+    verified_login_user: dict,
+) -> None:
+    await client.post("/api/v1/auth/login", json=verified_login_user)
+    response = await client.put("/api/v1/profile/", json={"last_name": payload})
+    assert response.status_code == 422

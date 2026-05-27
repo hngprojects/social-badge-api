@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.sanitizer import validate_no_html
 from app.core.security import validate_password_strength
 
 
@@ -48,20 +49,27 @@ class SignupRequest(BaseModel):
     def validate_first_name(cls, val: str) -> str:
         if not val or not val.strip():
             raise ValueError("First name cannot be empty")
-        return val.strip()
+
+        return validate_no_html(val.strip(), "First name")
 
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
         if val is None:
             return None
-        return val.strip()
+
+        val = val.strip()
+        if val:
+            validate_no_html(val, "Last name")
+
+        return val
 
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
         if isinstance(val, str):
             return val.strip().lower()
+
         return val
 
     @field_validator("password")
