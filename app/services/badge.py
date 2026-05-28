@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, select, update as sa_update
+from sqlalchemy import case, func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -52,6 +53,7 @@ async def _increment_template_badge_count(
         .where(PlatformTemplate.id == platform_template_id)
         .values(total_badges_made=PlatformTemplate.total_badges_made + 1)
     )
+
 
 async def create_badge(
     session: AsyncSession,
