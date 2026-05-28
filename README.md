@@ -1,6 +1,6 @@
 # social-badge-api
 
-  Backend API for the Social Badge platform — built with FastAPI, async SQLAlchemy 2.0, Alembic migrations, and `uv` for dependency management.
+Backend API for the Social Badge platform — built with FastAPI, async SQLAlchemy 2.0, Alembic migrations, and `uv` for dependency management.
 
 ---
 
@@ -9,7 +9,7 @@
 | Layer                | Choice                                            |
 | -------------------- | ------------------------------------------------- |
 | Web framework        | FastAPI (`fastapi[all]`)                          |
-| Server               | Uvicorn (via `fastapi dev` / `fastapi run`)       |
+| Server               | Uvicorn                                           |
 | ORM                  | SQLAlchemy 2.0 (async)                            |
 | DB driver            | `asyncpg`                                         |
 | Migrations           | Alembic (async-aware)                             |
@@ -29,32 +29,56 @@
 ```
 social-badge-api/
 ├── app/
-│   ├── main.py                # FastAPI() instance, mounts the API router
+│   ├── main.py                # FastAPI() instance, middleware, lifespan
+│   ├── dependencies.py        # Shared FastAPI dependencies (Annotated types)
 │   ├── core/
 │   │   ├── config.py          # Settings (env-driven via pydantic-settings)
-│   │   ├── exceptions/        # Global exception handlers
-│   │   └── rate_limit.py      # slowapi configuration
+│   │   ├── exceptions/        # Global exception handlers + custom errors
+│   │   ├── middleware/        # ContentSizeLimitMiddleware
+│   │   ├── ip.py              # IP address resolution
+│   │   ├── pillow.py          # Pillow decompression-bomb config
+│   │   ├── rate_limit.py      # slowapi configuration
+│   │   ├── sanitizer.py       # Input sanitization helpers
+│   │   ├── security.py        # Password hashing + verification
+│   │   ├── slug.py            # Share-slug generation
+│   │   └── token.py           # JWT creation + decoding
 │   ├── db/
 │   │   ├── session.py         # Async engine + session factory
-│   │   └── redis.py           # Redis connection pool
+│   │   ├── redis.py           # Redis connection pool
+│   │   └── seed/              # Database seed data
 │   ├── models/                # SQLAlchemy ORM models
-│   │   └── base.py            # DeclarativeBase
+│   │   ├── base.py            # DeclarativeBase
+│   │   ├── auth.py
+│   │   ├── badges.py
+│   │   ├── newsletter.py
+│   │   ├── roles.py
+│   │   ├── templates.py
+│   │   └── users.py
 │   ├── routers/
 │   │   └── v1/
 │   │       ├── __init__.py    # Aggregates all v1 endpoint routers
-│   │       └── health.py      # DB-backed health check endpoint
+│   │       ├── admin.py
+│   │       ├── auth.py
+│   │       ├── badges.py
+│   │       ├── contact.py
+│   │       ├── health.py      # DB-backed health check endpoint
+│   │       ├── newsletter.py
+│   │       ├── platform_templates.py
+│   │       └── profile.py
 │   ├── schemas/               # Pydantic request/response models
-│   ├── services/              # Business logic layer
-│   └── dependencies.py        # Shared FastAPI dependencies (Annotated types)
+│   └── services/              # Business logic layer
 ├── alembic/
 │   ├── env.py                 # Wired to app.models.Base.metadata + settings
 │   ├── script.py.mako
-│   └── versions/              # Migration files land here
-├── tests/
-│   ├── conftest.py            # AsyncClient fixture
-│   └── test_health.py
+│   └── versions/              # Migration files
+├── tests/                     # pytest test suite (mirrors app/ structure)
+│   └── conftest.py            # Fixtures: AsyncClient, db_session, test_user
+├── scripts/                   # Utility scripts
 ├── .github/
 │   ├── workflows/
+│   │   ├── CI.yml
+│   │   ├── CD.yml
+│   │   └── vulnerability_scanner.yml
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── .env.example
 ├── .pre-commit-config.yaml    # Ruff hooks for local dev
@@ -122,17 +146,24 @@ psql -U postgres -c "CREATE DATABASE social_badge;"
 
 ### 5. Run migrations
 
-The starter ships with the base `DeclarativeBase`. Once you add your models, generate the first migration:
+Apply all pending migrations:
 
 ```bash
-uv run alembic revision --autogenerate -m "initial"
 uv run alembic upgrade head
 ```
 
-### 6. Start the dev server
+To generate a new migration after editing a model:
 
 ```bash
-uv run fastapi dev app/main.py
+uv run alembic revision --autogenerate -m "describe the change"
+# Review the generated file in alembic/versions/ before applying.
+uv run alembic upgrade head
+```
+
+### 6. Start the server
+
+```bash
+uvicorn app.main:app --access-log False --log-config logging.yaml
 ```
 
 Open:
@@ -175,15 +206,14 @@ uv run pytest
 
 ## CI
 
-GitHub Actions runs three jobs on every push and PR to `main`:
+GitHub Actions runs jobs on every push and PR to `dev`, `staging`, and `main`:
 
-| Job               | What it checks                                     |
-| ----------------- | -------------------------------------------------- |
-| **Lint & Format** | `ruff check` + `ruff format --check`               |
-| **Type Check**    | `mypy app/` (strict)                               |
-| **Test**          | `pytest` against a PostgreSQL 17 service container |
+| Job      | What it checks                            |
+| -------- | ----------------------------------------- |
+| **Lint** | `flake8` (line length 120, exits zero)    |
+| **Test** | `pytest` (short tracebacks, quiet output) |
 
-All three must pass before a PR can be merged. The workflow is defined in `.github/workflows/ci.yml`.
+The workflow is defined in `.github/workflows/CI.yml`. A CD pipeline (`.github/workflows/CD.yml`) deploys to staging and production on pushes to `staging` and `main` respectively.
 
 ---
 
@@ -266,9 +296,8 @@ Put request/response models in `app/schemas/`. Use `SuccessResponse` and `ErrorR
 
 ## Production notes
 
-- Replace `fastapi dev` with `fastapi run` in production.
+- Start the server with `uvicorn app.main:app --access-log False --log-config logging.yaml`.
 - Run `alembic upgrade head` as a deployment step.
 - Ensure `SECRET_KEY` and other sensitive variables are managed via environment secrets.
 - Set `echo=False` on the engine (already the default) and configure pool size to match your worker count.
-- Add CORS, request logging, and any middleware you need in `app/main.py`.
 - Keep `.env` out of git (already in `.gitignore`); use your platform's secret store in production.
