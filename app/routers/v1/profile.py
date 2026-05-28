@@ -129,7 +129,7 @@ async def get_profile(
     status_code=status.HTTP_200_OK,
     summary="Update user profile",
     description=(
-        "Update user profile information (first name and/or last name). "
+        "Update profile information (first name, last name, email, and/or role). "
         "At least one field must be provided. "
         "Other fields remain unchanged."
     ),
@@ -150,14 +150,18 @@ async def update_user_profile(
 ) -> SuccessResponse[UserResponse]:
     """Update the authenticated user's profile.
 
-    Allows updating first_name and/or last_name. At least one field
-    must be provided to make a valid update request.
+    Allows updating first_name, last_name, email, and/or role.
+    At least one field must be provided to make a valid update request.
     """
-    # Check that at least one field is being updated
-    if payload.first_name is None and payload.last_name is None:
+    if (
+        payload.first_name is None
+        and payload.last_name is None
+        and payload.email is None
+        and payload.role is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one field (first_name or last_name) must be provided",
+            detail="At least one field must be provided",
         )
 
     updated_user = await update_profile(
@@ -165,6 +169,8 @@ async def update_user_profile(
         user=current_user,
         first_name=payload.first_name,
         last_name=payload.last_name,
+        email=payload.email,
+        role=payload.role,
     )
 
     logger.info("Updated profile for user %s", current_user.id)
