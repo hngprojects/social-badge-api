@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -43,6 +44,8 @@ from app.services.badge import (
     unpublish_badge,
     upload_badge_logo,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -720,7 +723,10 @@ async def get_participant_page(
             detail="Badge not found.",
         ) from exc
 
-    await increment_badge_share_count(session=session, slug=slug)
+    try:
+        await increment_badge_share_count(session=session, slug=slug)
+    except Exception:
+        logger.exception("Failed to increment share_count for slug %r", slug)
 
     return SuccessResponse(
         message="Badge data retrieved successfully.",
