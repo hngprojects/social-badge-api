@@ -23,6 +23,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.49",
     "structlog>=25.5.0",
     "uuid-utils>=0.15.0",
+    "loguru>=0.7.3",
 ]
 
 [dependency-groups]
