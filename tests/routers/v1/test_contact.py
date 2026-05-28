@@ -407,3 +407,49 @@ def test_notification_html_includes_all_fields() -> None:
     assert "alex@example.com" in result
     assert "Bug Report" in result
     assert "Something is broken." in result
+
+
+_XSS_PAYLOADS = [
+    "<script>alert('XSS')</script>",
+    "<img src=x onerror=alert(1)>",
+    "<svg onload=alert(1)>",
+    "javascript:alert(1)",
+    "<a href='javascript:void(0)' onclick=alert(1)>click</a>",
+    "<SCRIPT>alert('xss')</SCRIPT>",
+    "data:text/html,<script>alert(1)</script>",
+    "<body onload=alert(1)>",
+]
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_contact_rejects_xss_in_first_name(
+    client: AsyncClient,
+    payload: str,
+) -> None:
+    body = {
+        "first_name": payload,
+        "last_name": "Doe",
+        "email": "xsscontact@example.com",
+        "subject": "general",
+        "message": "This is a clean message that is long enough.",
+    }
+    response = await client.post("/api/v1/contact", json=body)
+    assert response.status_code == 422
+    assert response.json()["status"] == "error"
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_contact_rejects_xss_in_message(
+    client: AsyncClient,
+    payload: str,
+) -> None:
+    body = {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "email": "xsscontact2@example.com",
+        "subject": "general",
+        "message": payload,
+    }
+    response = await client.post("/api/v1/contact", json=body)
+    assert response.status_code == 422
+    assert response.json()["status"] == "error"
