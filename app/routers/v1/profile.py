@@ -276,7 +276,9 @@ async def upload_profile_photo_endpoint(
             photo_data=content,
         )
     except CloudinaryUploadError as exc:
-        logger.error("Cloudinary upload failed for user %s: %s", current_user.id, exc)
+        logger.exception(
+            "Cloudinary upload failed for user %s: %s", current_user.id, exc
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to upload image to Cloudinary",

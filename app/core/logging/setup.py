@@ -76,11 +76,8 @@ def setup_logging(
         lib_logger.handlers = []
         lib_logger.propagate = True
 
-<<<<<<< HEAD
     logging.getLogger("uvicorn.access").propagate = False
 
-=======
->>>>>>> cdab0f40beac7b130fd2e64b6404bd685ff45006
     log_file.parent.mkdir(parents=True, exist_ok=True)
     error_log_file = log_file.with_name(log_file.stem + "_errors" + log_file.suffix)
 

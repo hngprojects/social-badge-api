@@ -31,7 +31,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        request_id = str(uuid.uuid4())[:8]
+        request_id = uuid.uuid4().hex
         client_ip = _client_ip(request)
         method = request.method
         path = request.url.path

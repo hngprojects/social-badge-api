@@ -140,7 +140,7 @@ class DataSanitizer:
             r"([?&]?(?:\w+))=([^&\s]+)",
             lambda m: (
                 f"{m.group(1)}=[REDACTED]"
-                if self._is_sensitive_field(m.group(1))
+                if self._is_sensitive_field(m.group(1).lstrip("?&"))
                 else m.group(0)
             ),
             text,
