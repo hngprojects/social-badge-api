@@ -453,3 +453,20 @@ async def test_contact_rejects_xss_in_message(
     response = await client.post("/api/v1/contact", json=body)
     assert response.status_code == 422
     assert response.json()["status"] == "error"
+
+
+@pytest.mark.parametrize("payload", _XSS_PAYLOADS)
+async def test_contact_rejects_xss_in_last_name(
+    client: AsyncClient,
+    payload: str,
+) -> None:
+    body = {
+        "first_name": "Jane",
+        "last_name": payload,
+        "email": "xsscontact3@example.com",
+        "subject": "general",
+        "message": "This is a clean message that is long enough.",
+    }
+    response = await client.post("/api/v1/contact", json=body)
+    assert response.status_code == 422
+    assert response.json()["status"] == "error"
