@@ -779,6 +779,108 @@ async def test_get_participant_page_was_published_then_unpublished(
     assert response.json()["message"] == "Badge not found."
 
 
+# ── share_count / creation_count ──────────────────────────────────────────────
+
+
+async def test_get_participant_page_increments_share_count(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    published_template: Badge,
+) -> None:
+    """Each GET /badges/public/{slug} increments share_count by 1."""
+    assert published_template.share_count == 0
+
+    await client.get(f"/api/v1/badges/public/{published_template.share_slug}")
+    await db_session.refresh(published_template)
+    assert published_template.share_count == 1
+
+    await client.get(f"/api/v1/badges/public/{published_template.share_slug}")
+    await db_session.refresh(published_template)
+    assert published_template.share_count == 2
+
+
+async def test_increment_creation_success(
+    client: AsyncClient,
+    published_template: Badge,
+) -> None:
+    """POST /badges/public/{slug}/increment-creation returns 200 success."""
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Creation count incremented."
+
+
+async def test_increment_creation_increments_count(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    published_template: Badge,
+) -> None:
+    """creation_count increases by 1 for each POST call."""
+    assert published_template.creation_count == 0
+
+    await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    await db_session.refresh(published_template)
+    assert published_template.creation_count == 1
+
+    await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    await db_session.refresh(published_template)
+    assert published_template.creation_count == 2
+
+
+async def test_increment_creation_unpublished_returns_404(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Unpublished badge slug returns 404 on the increment-creation endpoint."""
+    template = Badge(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,
+        share_slug="draftcreate01",
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/v1/badges/public/draftcreate01/increment-creation"
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_increment_creation_nonexistent_slug_returns_404(
+    client: AsyncClient,
+) -> None:
+    """A completely unknown slug returns 404."""
+    response = await client.post(
+        "/api/v1/badges/public/doesnotexist99/increment-creation"
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_increment_creation_no_auth_required(
+    client: AsyncClient,
+    published_template: Badge,
+) -> None:
+    """No authentication token required for the increment-creation endpoint."""
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    assert response.status_code == 200
+
+
 @pytest.fixture
 async def seed_multiple_platform_templates(
     db_session: AsyncSession,

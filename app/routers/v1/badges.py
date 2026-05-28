@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -36,11 +37,15 @@ from app.services.badge import (
     edit_badge,
     get_badge_analytics,
     get_public_badge_by_slug,
+    increment_badge_creation_count,
+    increment_badge_share_count,
     list_badges,
     publish_badge,
     unpublish_badge,
     upload_badge_logo,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -718,6 +723,11 @@ async def get_participant_page(
             detail="Badge not found.",
         ) from exc
 
+    try:
+        await increment_badge_share_count(session=session, slug=slug)
+    except Exception:
+        logger.exception("Failed to increment share_count for slug %r", slug)
+
     return SuccessResponse(
         message="Badge data retrieved successfully.",
         data=PublicBadgePageResponse(
@@ -729,3 +739,40 @@ async def get_participant_page(
             hashtags=[h.hashtag for h in badge.hashtags],
         ),
     )
+
+
+@router.post(
+    "/public/{slug}/increment-creation",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+    summary="Increment badge creation count",
+    description=(
+        "Records that a participant has generated a badge from the public page. "
+        "No authentication required. Increments creation_count atomically at the "
+        "database level. Returns 404 if the slug does not resolve to a published badge."
+    ),
+    responses={
+        200: {"description": "Creation count incremented."},
+        404: {
+            "model": ErrorResponse,
+            "description": "Slug not found or badge is not published.",
+        },
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def increment_creation(
+    request: Request,
+    session: DBSession,
+    slug: str,
+) -> SuccessResponse[None]:
+    """Atomically increment the creation counter for a public badge."""
+    try:
+        await increment_badge_creation_count(session=session, slug=slug)
+    except PublicBadgeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Badge not found.",
+        ) from exc
+
+    return SuccessResponse(message="Creation count incremented.")

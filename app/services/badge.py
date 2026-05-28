@@ -1,10 +1,11 @@
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import case, func, select
 from sqlalchemy import update as sa_update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -237,6 +238,45 @@ async def get_public_badge_by_slug(
 
     logger.info("Public lookup for slug %s resolved to template %s", slug, template.id)
     return template
+
+
+_PUBLIC_WHERE = (
+    Badge.is_published.is_(True),
+    Badge.deleted_at.is_(None),
+)
+
+
+async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
+    """Atomically increment share_count for a published badge.
+
+    Called after a successful public page fetch; silently no-ops if the row
+    has since disappeared (best-effort counter — accuracy is not critical).
+    """
+    await session.execute(
+        sa_update(Badge)
+        .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+        .values(share_count=Badge.share_count + 1)
+    )
+    await session.commit()
+
+
+async def increment_badge_creation_count(session: AsyncSession, slug: str) -> None:
+    """Atomically increment creation_count for a published badge.
+
+    Raises PublicBadgeNotFoundError when the slug does not resolve to a
+    published, non-deleted badge so the router can return 404.
+    """
+    result = cast(
+        CursorResult[Any],
+        await session.execute(
+            sa_update(Badge)
+            .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+            .values(creation_count=Badge.creation_count + 1)
+        ),
+    )
+    await session.commit()
+    if result.rowcount == 0:
+        raise PublicBadgeNotFoundError
 
 
 async def list_platform_templates(
