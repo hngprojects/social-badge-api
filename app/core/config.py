@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal, Self
 
 from pydantic import PostgresDsn, RedisDsn, field_validator, model_validator
@@ -83,6 +84,9 @@ class Settings(BaseSettings):
 
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
+
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: Path = Path("logs/app.log")
 
     @field_validator("FRONTEND_URL", mode="after")
     @classmethod
