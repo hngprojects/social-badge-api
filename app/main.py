@@ -1,4 +1,3 @@
-import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -6,24 +5,35 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 
+import app.core.pillow as _pillow_init  # noqa: F401 — must precede any Image.open() call
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import ContentSizeLimitMiddleware, RequestLoggingMiddleware
 from app.core.rate_limit import limiter
 from app.db.redis import redis_pool
 from app.routers.v1 import api_router
 
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    setup_logging(
+        log_level=settings.LOG_LEVEL,
+        log_file=settings.LOG_FILE,
+        environment=settings.ENVIRONMENT,
+    )
+
     yield
     await redis_pool.disconnect()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
-
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(
+    ContentSizeLimitMiddleware,
+    max_body_bytes=settings.MAX_CONTENT_BODY_SIZE,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -39,6 +49,7 @@ app.add_middleware(
     ],
     expose_headers=["Content-Length"],
 )
+
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 

@@ -42,6 +42,7 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
+    LoginUserResponse,
     LogoutAllResponse,
     ResendVerificationRequest,
     ResetPasswordRequest,
@@ -207,7 +208,7 @@ async def register(
         },
     },
 )
-@limiter.limit("5/minute")
+@limiter.limit("3/minute")
 async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
@@ -325,7 +326,7 @@ async def reset_organizer_password(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 async def login(
     request: Request,
     payload: LoginRequest,
@@ -361,7 +362,12 @@ async def login(
     return SuccessResponse(
         message="Login successful",
         data=LoginResponse(
-            user=UserResponse.model_validate(user),
+            user=LoginUserResponse(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                email=user.email,
+                is_email_verified=user.is_email_verified,
+            ),
         ),
     )
 
@@ -499,7 +505,7 @@ async def logout(
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
 )
-@limiter.limit("10/minute")
+@limiter.limit("3/minute")
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,

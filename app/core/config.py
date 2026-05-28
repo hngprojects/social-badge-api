@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal, Self
 
 from pydantic import PostgresDsn, RedisDsn, field_validator, model_validator
@@ -79,8 +80,13 @@ class Settings(BaseSettings):
 
     MAX_SLUG_RETRIES: int = 5
 
+    MAX_CONTENT_BODY_SIZE: int = 10 * 1024 * 1024  # 10 MB
+
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
+
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: Path = Path("logs/app.log")
 
     @field_validator("FRONTEND_URL", mode="after")
     @classmethod
@@ -146,6 +152,14 @@ class Settings(BaseSettings):
             raise ValueError("SMTP fallback credentials must be set in production")
 
         return self
+
+    @field_validator("MAX_CONTENT_BODY_SIZE")
+    @classmethod
+    def validate_max_content_body_size(cls, val: int) -> int:
+        if val <= 0:
+            raise ValueError("MAX_CONTENT_BODY_SIZE must be greater than 0")
+
+        return val
 
 
 @lru_cache
