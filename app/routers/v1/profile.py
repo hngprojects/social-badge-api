@@ -167,7 +167,7 @@ async def update_user_profile(
         last_name=payload.last_name,
     )
 
-    logger.info(f"Updated profile for user {current_user.id}")
+    logger.info("Updated profile for user %s", current_user.id)
 
     return SuccessResponse(
         message="Profile updated successfully",
@@ -210,7 +210,7 @@ async def delete_user_profile(
         user_id=user_id,
     )
 
-    logger.info(f"Deleted profile for user {user_id}")
+    logger.info("Deleted profile for user %s", user_id)
 
     return SuccessResponse(
         message="Your profile has been permanently deleted.",
@@ -276,13 +276,15 @@ async def upload_profile_photo_endpoint(
             photo_data=content,
         )
     except CloudinaryUploadError as exc:
-        logger.error(f"Cloudinary upload failed for user {current_user.id}: {exc}")
+        logger.exception(
+            "Cloudinary upload failed for user %s: %s", current_user.id, exc
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to upload image to Cloudinary",
         ) from exc
 
-    logger.info(f"Updated profile photo for user {current_user.id}")
+    logger.info("Updated profile photo for user %s", current_user.id)
 
     return SuccessResponse(
         message="Profile photo updated successfully",
