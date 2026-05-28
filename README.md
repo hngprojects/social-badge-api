@@ -80,7 +80,7 @@ social-badge-api/
 │   │   ├── CD.yml
 │   │   └── vulnerability_scanner.yml
 │   └── PULL_REQUEST_TEMPLATE.md
-├── .env.example
+├── .env.sample
 ├── .pre-commit-config.yaml    # Ruff hooks for local dev
 ├── alembic.ini
 ├── pyproject.toml
@@ -124,7 +124,7 @@ This installs git hooks that run `ruff check --fix` and `ruff format` on every c
 ### 3. Configure
 
 ```bash
-cp .env.example .env
+cp .env.sample .env
 ```
 
 Edit `.env` and set the required variables. The database driver **must** be `postgresql+asyncpg`:
