@@ -306,6 +306,22 @@ async def test_update_profile_email_only(
     assert data["data"]["email"] == "updated-profile@example.com"
 
 
+async def test_update_profile_email_normalized(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Email is stripped and lowercased before validation."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"email": "  UPPER-Profile@Example.COM  "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["email"] == "upper-profile@example.com"
+
+
 async def test_update_profile_invalid_email_rejected(
     client: AsyncClient,
     profile_user: dict[str, str],

@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -25,9 +26,19 @@ class UpdateProfileRequest(BaseModel):
     )
     role: str | None = Field(
         None,
+        max_length=200,
         description="The user's role or job title (e.g. 'Engineer', 'Designer').",
         json_schema_extra={"example": "Software Engineer"},
     )
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, val: Any) -> Any:
+        if val is None:
+            return val
+        if isinstance(val, str):
+            return val.strip().lower()
+        return val
 
     @field_validator("first_name")
     @classmethod
