@@ -157,7 +157,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                     "visible": True,
                 },
                 {
-                    "key": "role_title",
+                    "key": "role",
                     "type": "participant_input",
                     "label": "ROLE / TITLE",
                     "placeholder": "e.g. Attendee",
