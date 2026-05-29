@@ -230,6 +230,11 @@ class UserResponse(BaseModel):
         description="Optional URL to the user's profile photo.",
         json_schema_extra={"example": "https://example.com/photo.jpg"},
     )
+    role: str | None = Field(
+        None,
+        description="The user's role or job title.",
+        json_schema_extra={"example": "Software Engineer"},
+    )
     created_at: datetime = Field(
         ...,
         description="The timestamp when the user account was created.",

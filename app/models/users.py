@@ -31,6 +31,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     profile_photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

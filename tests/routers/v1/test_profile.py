@@ -1,11 +1,14 @@
 """Tests for profile management endpoints."""
 
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete as sa_delete
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import CloudinaryUploadError
@@ -16,7 +19,7 @@ from app.models.users import User
 @pytest.fixture
 async def profile_user(
     db_session: AsyncSession,
-) -> dict[str, str]:
+) -> AsyncGenerator[Any, str]:
     """Create a verified user for profile tests."""
     creds: dict[str, str] = {
         "email": "profile@example.com",
@@ -239,6 +242,116 @@ async def test_update_profile_rate_limit(
     assert data["message"] == "Rate limit exceeded"
 
 
+async def test_update_profile_role_only(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Test updating only the role field."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"role": "Software Engineer"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["data"]["role"] == "Software Engineer"
+
+
+async def test_update_profile_role_persists(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """role is returned in the GET /profile response after being set."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    await client.put("/api/v1/profile/", json={"role": "Designer"})
+
+    response = await client.get("/api/v1/profile/")
+    assert response.status_code == 200
+    assert response.json()["data"]["role"] == "Designer"
+
+
+async def test_update_profile_role_cleared_with_empty_string(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Whitespace-only role is normalised to None by the validator; because no
+    other field is provided the request is rejected with 400 (same behaviour
+    as sending a whitespace-only first_name alone)."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put("/api/v1/profile/", json={"role": "   "})
+    assert response.status_code == 400
+    assert "At least one field" in response.json()["message"]
+
+
+async def test_update_profile_email_only(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Test updating only the email field."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"email": "updated-profile@example.com"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["data"]["email"] == "updated-profile@example.com"
+
+
+async def test_update_profile_email_normalized(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Email is stripped and lowercased before validation."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"email": "  UPPER-Profile@Example.COM  "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["email"] == "upper-profile@example.com"
+
+
+async def test_update_profile_invalid_email_rejected(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Malformed email is rejected with 422."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"email": "not-an-email"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_update_profile_role_html_rejected(
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """HTML in the role field is rejected."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.put(
+        "/api/v1/profile/",
+        json={"role": "<script>alert(1)</script>"},
+    )
+
+    assert response.status_code == 422
+
+
 # ─────────────────────────────────────────────────────────────────
 # DELETE /profile endpoint tests
 # ─────────────────────────────────────────────────────────────────
@@ -268,8 +381,11 @@ async def test_delete_profile_success(
     mock_delete_asset.assert_called_once()
 
     # Verify user no longer exists
-    user_result = await db_session.execute(
-        sa_delete(User).where(User.email == profile_user["email"])
+    user_result = cast(
+        CursorResult[Any],
+        await db_session.execute(
+            sa_delete(User).where(User.email == profile_user["email"])
+        ),
     )
     assert user_result.rowcount == 0
 
