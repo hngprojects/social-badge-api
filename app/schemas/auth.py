@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.sanitizer import validate_no_html
 from app.core.security import validate_password_strength
 
 
@@ -48,25 +49,35 @@ class SignupRequest(BaseModel):
     def validate_first_name(cls, val: str) -> str:
         if not val or not val.strip():
             raise ValueError("First name cannot be empty")
-        return val.strip()
+
+        return validate_no_html(val.strip(), "First name")
 
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
         if val is None:
             return None
-        return val.strip()
+
+        val = val.strip()
+        if val:
+            validate_no_html(val, "Last name")
+
+        return val
 
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
         if isinstance(val, str):
             return val.strip().lower()
+
         return val
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 bytes")
+
         return validate_password_strength(val)
 
 
@@ -108,6 +119,14 @@ class LoginRequest(BaseModel):
         ),
         json_schema_extra={"example": "StrongPassword1!", "minLength": 8},
     )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 characters")
+
+        return val
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -157,6 +176,9 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("Password must not exceed 500 characters")
+
         return validate_password_strength(val)
 
     @model_validator(mode="after")
@@ -227,10 +249,26 @@ class UserResponse(BaseModel):
         return val
 
 
-class LoginResponse(BaseModel):
-    user: UserResponse = Field(
+class LoginUserResponse(BaseModel):
+    """Minimal user payload returned only on login.
+
+    Deliberately excludes internal IDs, timestamps, and third-party URLs
+    to reduce the attack surface of the authentication response.
+    """
+
+    first_name: str = Field(..., json_schema_extra={"example": "Jane"})
+    last_name: str | None = Field(None, json_schema_extra={"example": "Doe"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "jane@example.com"})
+    is_email_verified: bool = Field(
         ...,
-        description="The authenticated user's profile details.",
+        description="Kept so the frontend can redirect unverified users appropriately.",
+    )
+
+
+class LoginResponse(BaseModel):
+    user: LoginUserResponse = Field(
+        ...,
+        description="Minimal user profile returned on successful authentication.",
     )
 
 

@@ -2,10 +2,16 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 
 
-class CreateTemplateInstanceRequest(BaseModel):
+class CreateBadgeRequest(BaseModel):
     platform_template_id: UUID = Field(
         ...,
         description="The id of the platform template the organiser is starting from.",
@@ -13,10 +19,10 @@ class CreateTemplateInstanceRequest(BaseModel):
     )
 
 
-class TemplateInstanceResponse(BaseModel):
+class CreateBadgeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    instance_id: UUID = Field(
+    id: UUID = Field(
         ...,
         description="The id of the new organiser template instance.",
     )
@@ -34,7 +40,7 @@ class TemplateInstanceResponse(BaseModel):
     )
 
 
-class PublishedTemplateResponse(BaseModel):
+class PublishedBadgeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(..., description="The template instance id.")
@@ -61,7 +67,7 @@ class LogoUploadResponse(BaseModel):
     )
 
 
-class PublicParticipantPageResponse(BaseModel):
+class PublicBadgePageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     title: str = Field(..., description="The event/template title.")
@@ -83,7 +89,7 @@ class PublicParticipantPageResponse(BaseModel):
     )
 
 
-class DuplicateTemplateResponse(BaseModel):
+class DuplicateBadgeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(..., description="ID of the new draft template copy.")
@@ -96,46 +102,14 @@ class DuplicateTemplateResponse(BaseModel):
     created_at: datetime = Field(..., description="When the copy was created.")
 
 
-class PlatformTemplateResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID = Field(..., description="Unique identifier for the platform template.")
-    title: str = Field(..., description="Display name shown on the gallery card.")
-    category: str | None = Field(
-        None,
-        description=(
-            "Gallery filter category. One of: festivals, hackathons, conferences, "
-            "community, bootcamp, meetups, speakers, trending."
-        ),
-    )
-    thumbnail_url: str | None = Field(
-        None,
-        description="Preview image URL shown on the gallery card.",
-    )
-    canvas_data: dict[str, Any] = Field(
-        ...,
-        description=(
-            "Full layout descriptor. The organiser editor reads background.options "
-            "to render the colour/gradient swatches and fields[] to build the "
-            "customisation form."
-        ),
-    )
-    is_active: bool = Field(
-        ..., description="False means the template is hidden from the gallery."
-    )
-    created_at: datetime | None = Field(
-        None, description="When the template was created."
-    )
-
-
-class OrganiserTemplateSummary(BaseModel):
+class BadgeSummary(BaseModel):
     """Per-item shape for the organiser's template dashboard list.
 
     canvas_data is intentionally excluded — it is large and not needed
     for rendering a dashboard card.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID = Field(..., description="Unique identifier for the template instance.")
     title: str = Field(..., description="Template title set by the organiser.")
@@ -161,6 +135,16 @@ class OrganiserTemplateSummary(BaseModel):
     updated_at: datetime | None = Field(
         None, description="When the template was last modified."
     )
+    total_shares: int = Field(
+        ...,
+        validation_alias="share_count",
+        description="Total shares for this badge.",
+    )
+    total_badges_created: int = Field(
+        ...,
+        validation_alias="creation_count",
+        description="Total badges created from the public page.",
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -168,16 +152,16 @@ class OrganiserTemplateSummary(BaseModel):
         return "published" if self.is_published else "draft"
 
 
-class OrganiserTemplateListResponse(BaseModel):
-    templates: list[OrganiserTemplateSummary]
-    total: int = Field(..., description="Total templates matching the filter.")
+class BadgeListResponse(BaseModel):
+    badges: list[BadgeSummary]
+    total: int = Field(..., description="Total badges matching the filter.")
     page: int = Field(..., description="Current page number.")
     limit: int = Field(..., description="Items per page.")
     prev: str | None = Field(None, description="Relative URL to the previous page.")
     next: str | None = Field(None, description="Relative URL to the next page.")
 
 
-class EditTemplateRequest(BaseModel):
+class EditBadgeRequest(BaseModel):
     title: str | None = None
     canvas_data: dict[str, Any] | None = None
     default_caption: str | None = None
@@ -203,8 +187,8 @@ class EditTemplateRequest(BaseModel):
         return list(dict.fromkeys(stripped))
 
 
-class OrganiserTemplateDetailResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class BadgeDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
     title: str
@@ -221,24 +205,43 @@ class OrganiserTemplateDetailResponse(BaseModel):
     hashtags: list[str]
     created_at: datetime | None
     updated_at: datetime | None
+    total_shares: int = Field(validation_alias="share_count")
+    total_badges_created: int = Field(validation_alias="creation_count")
 
     @field_validator("hashtags", mode="before")
     @classmethod
     def extract_hashtag_values(cls, val: Any) -> list[str]:
-        """Convert a list of TemplateHashtag ORM objects to plain strings."""
+        """Convert a list of BadgeHashtag ORM objects to plain strings."""
         if not isinstance(val, list):
             return []
         return [item.hashtag if hasattr(item, "hashtag") else str(item) for item in val]
 
 
-class PlatformTemplateListResponse(BaseModel):
-    templates: list[PlatformTemplateResponse]
-    total: int = Field(
-        ..., description="Total number of templates matching the filter."
+class PlatformTemplateUsage(BaseModel):
+    platform_template_id: UUID = Field(
+        ..., description="The platform template the badges are based on."
     )
-    page: int = Field(..., description="Current page number.")
-    limit: int = Field(..., description="Items per page.")
-    prev: str | None = Field(
-        default=None, description="Relative URL to the previous page."
+    count: int = Field(..., description="Number of badges using this template.")
+
+
+class BadgeAnalyticsResponse(BaseModel):
+    total_organiser_badges: int = Field(
+        ...,
+        description="Total badges owned by the organiser (excluding soft-deleted).",
     )
-    next: str | None = Field(default=None, description="Relative URL to the next page.")
+    total_active_badges: int = Field(
+        ..., description="Count of currently published badges."
+    )
+    total_shares: int = Field(
+        ..., description="Sum of share_count across all the organiser's badges."
+    )
+    total_badges_created: int = Field(
+        ..., description="Sum of creation_count across all the organiser's badges."
+    )
+    platform_template_usage: list[PlatformTemplateUsage] = Field(
+        default_factory=list,
+        description=(
+            "Per-template breakdown showing how many badges the organiser has "
+            "created from each platform template."
+        ),
+    )

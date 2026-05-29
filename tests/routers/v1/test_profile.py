@@ -353,12 +353,11 @@ async def test_delete_profile_rate_limit(
     profile_user: dict[str, str],
 ) -> None:
     """Test rate limiting on DELETE /profile endpoint."""
-    payload = profile_user
 
     # Make multiple login attempts and delete attempts
     for _ in range(5):
         # Create a new test user for each iteration
-        unique_email = f"profile_{uuid4()}@example.com"
+        f"profile_{uuid4()}@example.com"
         # We need to create and delete a user each time for the rate limit test
         # Since delete is destructive, this test is limited
 
@@ -521,10 +520,10 @@ async def test_upload_profile_photo_file_too_large(
         files={"file": ("large.png", large_image_data, "image/png")},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 413
     data = response.json()
     assert data["status"] == "error"
-    assert "exceeds maximum" in data["message"]
+    assert "too large" in data["message"]
 
 
 @patch("app.services.profile.upload_logo", new_callable=AsyncMock)

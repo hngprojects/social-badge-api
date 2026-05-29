@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.core.sanitizer import validate_no_html
+
 
 class ContactTopic(StrEnum):
     GENERAL = "general"
@@ -49,7 +51,7 @@ class ContactRequest(BaseModel):
     def validate_first_name(cls, val: str) -> str:
         if not val or not val.strip():
             raise ValueError("First name cannot be empty")
-        return val.strip()
+        return validate_no_html(val.strip(), "First name")
 
     @field_validator("last_name")
     @classmethod
@@ -57,6 +59,8 @@ class ContactRequest(BaseModel):
         if val is None:
             return None
         stripped = val.strip()
+        if stripped:
+            validate_no_html(stripped, "Last name")
         return stripped if stripped else None
 
     @field_validator("email", mode="before")
@@ -74,7 +78,7 @@ class ContactRequest(BaseModel):
             raise ValueError("Message must be at least 10 characters long")
         if len(stripped) > 5000:
             raise ValueError("Message must not exceed 5000 characters")
-        return stripped
+        return validate_no_html(stripped, "Message")
 
 
 class ContactResponse(BaseModel):

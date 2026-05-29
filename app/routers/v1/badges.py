@@ -1,49 +1,51 @@
+import logging
 from typing import Annotated
-from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 
 from app.core.exceptions import (
+    BadgeAlreadyPublishedError,
+    BadgeNotFoundError,
     CloudinaryUploadError,
-    NotTemplateOwnerError,
-    OrganiserTemplateNotFoundError,
+    NotBadgeOwnerError,
+    PlatformTemplateNotActiveError,
     PlatformTemplateNotFoundError,
-    PublicTemplateNotFoundError,
-    TemplateAlreadyPublishedError,
-    TemplateInstanceForbiddenError,
-    TemplateInstanceNotFoundError,
+    PublicBadgeNotFoundError,
 )
 from app.core.rate_limit import limiter
 from app.dependencies import CurrentUser, DBSession
-from app.schemas.response import ErrorResponse, SuccessResponse
-from app.schemas.template import (
-    CreateTemplateInstanceRequest,
-    DuplicateTemplateResponse,
-    EditTemplateRequest,
+from app.schemas.badge import (
+    BadgeAnalyticsResponse,
+    BadgeDetailResponse,
+    BadgeListResponse,
+    BadgeSummary,
+    CreateBadgeRequest,
+    CreateBadgeResponse,
+    DuplicateBadgeResponse,
+    EditBadgeRequest,
     LogoUploadResponse,
-    OrganiserTemplateDetailResponse,
-    OrganiserTemplateListResponse,
-    OrganiserTemplateSummary,
-    PlatformTemplateListResponse,
-    PlatformTemplateResponse,
-    PublicParticipantPageResponse,
-    PublishedTemplateResponse,
-    TemplateInstanceResponse,
+    PlatformTemplateUsage,
+    PublicBadgePageResponse,
+    PublishedBadgeResponse,
 )
-from app.services.template import (
-    create_template_instance,
-    delete_organiser_template,
-    duplicate_template,
-    edit_organiser_template,
-    get_platform_template,
-    get_public_template_by_slug,
-    list_organiser_templates,
-    list_platform_templates,
-    publish_template,
-    unpublish_template,
-    upload_template_logo,
+from app.schemas.response import ErrorResponse, SuccessResponse
+from app.services.badge import (
+    create_badge,
+    delete_badge,
+    duplicate_badge,
+    edit_badge,
+    get_badge_analytics,
+    get_public_badge_by_slug,
+    increment_badge_creation_count,
+    increment_badge_share_count,
+    list_badges,
+    publish_badge,
+    unpublish_badge,
+    upload_badge_logo,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,25 +63,25 @@ def _is_valid_image(data: bytes) -> bool:
 
 
 @router.post(
-    "/organizer/instances",
-    response_model=SuccessResponse[TemplateInstanceResponse],
+    "",
+    response_model=SuccessResponse[CreateBadgeResponse],
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new template instance from a platform template",
+    summary="Create a new badge from a platform template",
     description=(
-        "Creates a new organiser template instance linked to the chosen "
+        "Creates a new organiser badge linked to the chosen "
         "platform template. The original platform template is never modified. "
         "The organiser is taken from the JWT, never from the request body."
     ),
     responses={
         201: {
-            "description": "Template instance created.",
+            "description": "Badge created.",
             "content": {
                 "application/json": {
                     "example": {
                         "status": "success",
-                        "message": "Template instance created successfully.",
+                        "message": "Badge created successfully.",
                         "data": {
-                            "instance_id": "019e1b66-c4ec-7b80-8c85-84c2fe4f9c84",
+                            "id": "019e1b66-c4ec-7b80-8c85-84c2fe4f9c84",
                             "platform_template_id": (
                                 "019e1b66-c4ec-7b80-8c85-84c2fe4f9c00"
                             ),
@@ -89,6 +91,10 @@ def _is_valid_image(data: bytes) -> bool:
                     }
                 }
             },
+        },
+        400: {
+            "model": ErrorResponse,
+            "description": "Platform template is not active.",
         },
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
         404: {"model": ErrorResponse, "description": "Platform template not found."},
@@ -101,11 +107,11 @@ async def create_instance(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    payload: CreateTemplateInstanceRequest,
-) -> SuccessResponse[TemplateInstanceResponse]:
-    """Create a new organiser template instance from a platform template."""
+    payload: CreateBadgeRequest,
+) -> SuccessResponse[CreateBadgeResponse]:
+    """Create a new organiser badge from a platform template."""
     try:
-        instance = await create_template_instance(
+        instance = await create_badge(
             session=session,
             organiser_id=current_user.id,
             platform_template_id=payload.platform_template_id,
@@ -115,12 +121,17 @@ async def create_instance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Platform template not found.",
         ) from exc
+    except PlatformTemplateNotActiveError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Platform template is not active.",
+        ) from exc
 
     assert instance.created_at is not None  # noqa: S101
     return SuccessResponse(
-        message="Template instance created successfully.",
-        data=TemplateInstanceResponse(
-            instance_id=instance.id,
+        message="Badge created successfully.",
+        data=CreateBadgeResponse(
+            id=instance.id,
             platform_template_id=instance.platform_template_id,
             organiser_id=instance.organiser_id,
             created_at=instance.created_at,
@@ -129,26 +140,26 @@ async def create_instance(
 
 
 @router.get(
-    "/organizer/instances",
-    response_model=SuccessResponse[OrganiserTemplateListResponse],
+    "",
+    response_model=SuccessResponse[BadgeListResponse],
     status_code=status.HTTP_200_OK,
-    summary="List organiser template instances",
+    summary="List organiser badges",
     description=(
-        "Returns a paginated list of all template instances owned by the "
-        "authenticated organiser. Soft-deleted templates are excluded. "
+        "Returns a paginated list of all badges owned by the "
+        "authenticated organiser. Soft-deleted badges are excluded. "
         "Each item includes a computed status field ('draft' or 'published'). "
         "Results are ordered by most recently updated first."
     ),
     responses={
         200: {
-            "description": "Template instances retrieved successfully.",
+            "description": "Badges retrieved successfully.",
             "content": {
                 "application/json": {
                     "example": {
                         "status": "success",
-                        "message": "Template instances retrieved successfully.",
+                        "message": "Badges retrieved successfully.",
                         "data": {
-                            "templates": [
+                            "badges": [
                                 {
                                     "id": "019e1b66-c4...fe4f9c84",
                                     "title": "HNG Tech Fest 2026",
@@ -183,16 +194,16 @@ async def list_instances(
     current_user: CurrentUser,
     page: int = Query(default=1, ge=1, description="Page number (1-based)."),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
-) -> SuccessResponse[OrganiserTemplateListResponse]:
-    """Return paginated template instances for the authenticated organiser."""
-    templates, total = await list_organiser_templates(
+) -> SuccessResponse[BadgeListResponse]:
+    """Return paginated badges for the authenticated organiser."""
+    badges, total = await list_badges(
         session=session,
         organiser_id=current_user.id,
         page=page,
         limit=limit,
     )
 
-    base_url = "/api/v1/templates/organizer/instances"
+    base_url = "/api/v1/badges"
 
     prev_link = None
     if page > 1:
@@ -203,12 +214,9 @@ async def list_instances(
         next_link = f"{base_url}?page={page + 1}&limit={limit}"
 
     return SuccessResponse(
-        message="Template instances retrieved successfully.",
-        data=OrganiserTemplateListResponse(
-            templates=[
-                OrganiserTemplateSummary.model_validate(org_template)
-                for org_template in templates
-            ],
+        message="Badges retrieved successfully.",
+        data=BadgeListResponse(
+            badges=[BadgeSummary.model_validate(org_badge) for org_badge in badges],
             total=total,
             page=page,
             limit=limit,
@@ -218,22 +226,100 @@ async def list_instances(
     )
 
 
-@router.post(
-    "/organizer/{template_id}/publish",
-    response_model=SuccessResponse[PublishedTemplateResponse],
+@router.get(
+    "/analytics",
+    response_model=SuccessResponse[BadgeAnalyticsResponse],
     status_code=status.HTTP_200_OK,
-    summary="Publish an organiser template",
+    summary="Get organiser badge analytics",
     description=(
-        "Publishes the organiser's template. Sets is_published to true, "
+        "Returns aggregated metrics across all badges owned by the "
+        "authenticated organiser. Includes total badge count, active "
+        "(published) badge count, total share interactions, total badges "
+        "created from public pages, and a per-platform-template usage "
+        "breakdown. Soft-deleted badges are excluded from every aggregate."
+    ),
+    responses={
+        200: {
+            "description": "Analytics retrieved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Analytics retrieved successfully.",
+                        "data": {
+                            "total_organiser_badges": 4,
+                            "total_active_badges": 2,
+                            "total_shares": 87,
+                            "total_badges_created": 152,
+                            "platform_template_usage": [
+                                {
+                                    "platform_template_id": (
+                                        "019e1b66-c4ec-7b80-8c85-84c2fe4f9c00"
+                                    ),
+                                    "count": 3,
+                                },
+                                {
+                                    "platform_template_id": (
+                                        "019e1b66-c4ec-7b80-8c85-84c2fe4f9c11"
+                                    ),
+                                    "count": 1,
+                                },
+                            ],
+                        },
+                    }
+                }
+            },
+        },
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def get_analytics(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+) -> SuccessResponse[BadgeAnalyticsResponse]:
+    """Return aggregated badge metrics for the authenticated organiser."""
+    (
+        total,
+        active,
+        total_shares,
+        total_creations,
+        usage_rows,
+    ) = await get_badge_analytics(session=session, organiser_id=current_user.id)
+
+    return SuccessResponse(
+        message="Analytics retrieved successfully.",
+        data=BadgeAnalyticsResponse(
+            total_organiser_badges=total,
+            total_active_badges=active,
+            total_shares=total_shares,
+            total_badges_created=total_creations,
+            platform_template_usage=[
+                PlatformTemplateUsage(platform_template_id=tid, count=count)
+                for tid, count in usage_rows
+            ],
+        ),
+    )
+
+
+@router.post(
+    "/{id}/publish",
+    response_model=SuccessResponse[PublishedBadgeResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Publish a badge",
+    description=(
+        "Publishes the organiser's badge. Sets is_published to true, "
         "records the publish time, and generates a unique share slug on "
         "first publish. The slug is preserved across re-publishes."
     ),
     responses={
-        200: {"description": "Template published."},
+        200: {"description": "Badge published."},
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
-        403: {"model": ErrorResponse, "description": "Not the template owner."},
-        404: {"model": ErrorResponse, "description": "Template not found."},
-        409: {"model": ErrorResponse, "description": "Template is already published."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
+        409: {"model": ErrorResponse, "description": "Badge is already published."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
@@ -242,51 +328,51 @@ async def publish(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    template_id: UUID,
-) -> SuccessResponse[PublishedTemplateResponse]:
-    """Publish an organiser template."""
+    id: UUID,
+) -> SuccessResponse[PublishedBadgeResponse]:
+    """Publish a badge."""
     try:
-        template = await publish_template(
+        badge = await publish_badge(
             session=session,
             organiser_id=current_user.id,
-            template_id=template_id,
+            id=id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
-    except NotTemplateOwnerError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this template.",
+            detail="You do not own this badge.",
         ) from exc
-    except TemplateAlreadyPublishedError as exc:
+    except BadgeAlreadyPublishedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Template is already published.",
+            detail="Badge is already published.",
         ) from exc
 
     return SuccessResponse(
-        message="Template published successfully.",
-        data=PublishedTemplateResponse.model_validate(template),
+        message="Badge published successfully.",
+        data=PublishedBadgeResponse.model_validate(badge),
     )
 
 
 @router.post(
-    "/organizer/{template_id}/unpublish",
-    response_model=SuccessResponse[PublishedTemplateResponse],
+    "/{id}/unpublish",
+    response_model=SuccessResponse[PublishedBadgeResponse],
     status_code=status.HTTP_200_OK,
-    summary="Unpublish an organiser template",
+    summary="Unpublish a badge",
     description=(
-        "Unpublishes the organiser's template. Sets is_published to false. "
+        "Unpublishes the organiser's badge. Sets is_published to false. "
         "The share slug is preserved so re-publishing later keeps the same URL."
     ),
     responses={
-        200: {"description": "Template unpublished."},
+        200: {"description": "Badge unpublished."},
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
-        403: {"model": ErrorResponse, "description": "Not the template owner."},
-        404: {"model": ErrorResponse, "description": "Template not found."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
@@ -295,48 +381,48 @@ async def unpublish(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    template_id: UUID,
-) -> SuccessResponse[PublishedTemplateResponse]:
-    """Unpublish an organiser template."""
+    id: UUID,
+) -> SuccessResponse[PublishedBadgeResponse]:
+    """Unpublish a badge."""
     try:
-        template = await unpublish_template(
+        badge = await unpublish_badge(
             session=session,
             organiser_id=current_user.id,
-            template_id=template_id,
+            id=id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
-    except NotTemplateOwnerError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this template.",
+            detail="You do not own this badge.",
         ) from exc
 
     return SuccessResponse(
-        message="Template unpublished successfully.",
-        data=PublishedTemplateResponse.model_validate(template),
+        message="Badge unpublished successfully.",
+        data=PublishedBadgeResponse.model_validate(badge),
     )
 
 
 @router.post(
-    "/organizer/{template_id}/duplicate",
-    response_model=SuccessResponse[DuplicateTemplateResponse],
+    "/{id}/duplicate",
+    response_model=SuccessResponse[DuplicateBadgeResponse],
     status_code=status.HTTP_201_CREATED,
-    summary="Duplicate an organiser template",
+    summary="Duplicate a badge",
     description=(
-        "Creates a draft copy of the organiser's template. "
+        "Creates a draft copy of the organiser's badge. "
         "The copy receives a new unique ID, inherits all configuration "
         "fields and hashtags from the original, and starts in an unpublished state. "
-        "The original template is not modified."
+        "The original badge is not modified."
     ),
     responses={
         201: {"description": "Draft copy created."},
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
-        403: {"model": ErrorResponse, "description": "Not the template owner."},
-        404: {"model": ErrorResponse, "description": "Template not found."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
@@ -345,145 +431,145 @@ async def duplicate(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    template_id: UUID,
-) -> SuccessResponse[DuplicateTemplateResponse]:
-    """Duplicate an organiser template into a new draft."""
+    id: UUID,
+) -> SuccessResponse[DuplicateBadgeResponse]:
+    """Duplicate a badge into a new draft."""
     try:
-        copy = await duplicate_template(
+        copy = await duplicate_badge(
             session=session,
             organiser_id=current_user.id,
-            template_id=template_id,
+            id=id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
-    except NotTemplateOwnerError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this template.",
+            detail="You do not own this badge.",
         ) from exc
 
     return SuccessResponse(
-        message="Template duplicated successfully.",
-        data=DuplicateTemplateResponse.model_validate(copy),
+        message="Badge duplicated successfully.",
+        data=DuplicateBadgeResponse.model_validate(copy),
     )
 
 
 @router.delete(
-    "/organizer/{template_id}",
+    "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete an organiser template",
+    summary="Delete a badge",
     description=(
-        "Permanently removes the organiser template and all associated records "
+        "Permanently removes the badge and all associated records "
         "(badges, hashtags) from the database. The Cloudinary logo and any "
         "generated badge image assets are also deleted on a best-effort basis — "
         "a Cloudinary failure does not cause the request to fail. "
         "This action is irreversible."
     ),
     responses={
-        204: {"description": "Template deleted successfully."},
+        204: {"description": "Badge deleted successfully."},
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
-        403: {"model": ErrorResponse, "description": "Not the template owner."},
-        404: {"model": ErrorResponse, "description": "Template not found."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
 @limiter.limit("30/minute")
-async def delete_template(
+async def remove_badge(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    template_id: UUID,
+    id: UUID,
 ) -> None:
-    """Permanently delete an organiser template and its Cloudinary assets."""
+    """Permanently delete a badge and its Cloudinary assets."""
     try:
-        await delete_organiser_template(
+        await delete_badge(
             session=session,
             organiser_id=current_user.id,
-            template_id=template_id,
+            id=id,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
-    except NotTemplateOwnerError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this template.",
+            detail="You do not own this badge.",
         ) from exc
 
 
 @router.patch(
-    "/organizer/{template_id}",
-    response_model=SuccessResponse[OrganiserTemplateDetailResponse],
+    "/{id}",
+    response_model=SuccessResponse[BadgeDetailResponse],
     status_code=status.HTTP_200_OK,
-    summary="Edit an organiser template",
+    summary="Edit a badge",
     description=(
-        "Partially updates an organiser template. Only fields present in the "
+        "Partially updates a badge. Only fields present in the "
         "request body are written to the database — absent fields are left "
         "unchanged. To clear a nullable field send it explicitly as null. "
         "To replace hashtags include the full desired list; omit the key "
-        "entirely to leave hashtags unchanged. Returns the full updated template."
+        "entirely to leave hashtags unchanged. Returns the full updated badge."
     ),
     responses={
-        200: {"description": "Template updated successfully."},
+        200: {"description": "Badge updated successfully."},
         401: {"model": ErrorResponse, "description": "Unauthenticated."},
-        403: {"model": ErrorResponse, "description": "Not the template owner."},
-        404: {"model": ErrorResponse, "description": "Template not found."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
         422: {"model": ErrorResponse, "description": "Validation error."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
 @limiter.limit("30/minute")
-async def edit_template(
+async def update_badge(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    template_id: UUID,
-    payload: EditTemplateRequest,
-) -> SuccessResponse[OrganiserTemplateDetailResponse]:
-    """Apply a partial update to an organiser template."""
+    id: UUID,
+    payload: EditBadgeRequest,
+) -> SuccessResponse[BadgeDetailResponse]:
+    """Apply a partial update to a badge."""
     field_updates = payload.model_dump(exclude_unset=True)
     new_hashtags: list[str] | None = field_updates.pop("hashtags", None)
     update_hashtags: bool = "hashtags" in payload.model_fields_set
 
     try:
-        template = await edit_organiser_template(
+        badge = await edit_badge(
             session=session,
             organiser_id=current_user.id,
-            template_id=template_id,
+            id=id,
             field_updates=field_updates,
             new_hashtags=new_hashtags,
             update_hashtags=update_hashtags,
         )
-    except OrganiserTemplateNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
-    except NotTemplateOwnerError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this template.",
+            detail="You do not own this badge.",
         ) from exc
 
     return SuccessResponse(
-        message="Template updated successfully.",
-        data=OrganiserTemplateDetailResponse.model_validate(template),
+        message="Badge updated successfully.",
+        data=BadgeDetailResponse.model_validate(badge),
     )
 
 
 @router.put(
-    "/organizer/instances/{instance_id}/logo",
+    "/{id}/logo",
     response_model=SuccessResponse[LogoUploadResponse],
     status_code=status.HTTP_200_OK,
-    summary="Upload a logo for a template instance",
+    summary="Upload a logo for a badge",
     description=(
         "Accepts a multipart/form-data upload with a single PNG or JPG image "
-        "(max 2 MB). Stores the file in Cloudinary under the template-logos/ "
+        "(max 2 MB). Stores the file in Cloudinary under the badge-logos/ "
         "folder and returns the resulting URL. If the instance already has a "
         "logo, the new file is uploaded and persisted first, then the old "
         "Cloudinary asset is deleted. "
@@ -498,7 +584,7 @@ async def edit_template(
                         "status": "success",
                         "message": "Logo uploaded successfully.",
                         "data": {
-                            "logo_url": "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png"
+                            "logo_url": "https://res.cloudinary.com/demo/image/upload/badge-logos/abc.png"
                         },
                     }
                 }
@@ -509,7 +595,7 @@ async def edit_template(
             "model": ErrorResponse,
             "description": "Instance belongs to another organiser.",
         },
-        404: {"model": ErrorResponse, "description": "Template instance not found."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
         413: {"model": ErrorResponse, "description": "File exceeds the 2 MB limit."},
         415: {
             "model": ErrorResponse,
@@ -520,13 +606,13 @@ async def edit_template(
 )
 @limiter.limit("10/minute")
 async def upload_logo(
-    instance_id: UUID,
+    id: UUID,
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> SuccessResponse[LogoUploadResponse]:
-    """Upload or replace the logo for a template instance."""
+    """Upload or replace the logo for a badge."""
     if file.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -550,21 +636,21 @@ async def upload_logo(
         )
 
     try:
-        logo_url = await upload_template_logo(
+        logo_url = await upload_badge_logo(
             session=session,
-            instance_id=instance_id,
+            id=id,
             organiser_id=current_user.id,
             image_data=image_data,
         )
-    except TemplateInstanceNotFoundError as exc:
+    except BadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template instance not found.",
+            detail="Badge not found.",
         ) from exc
-    except TemplateInstanceForbiddenError as exc:
+    except NotBadgeOwnerError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to modify this template instance.",
+            detail="You do not have permission to modify this badge.",
         ) from exc
     except CloudinaryUploadError as exc:
         raise HTTPException(
@@ -582,28 +668,28 @@ async def upload_logo(
 
 
 @router.get(
-    "/organizer/public/{slug}",
-    response_model=SuccessResponse[PublicParticipantPageResponse],
+    "/public/{slug}",
+    response_model=SuccessResponse[PublicBadgePageResponse],
     status_code=status.HTTP_200_OK,
     summary="Get public participant page data",
     description=(
-        "Returns the public-facing template data needed to render the participant "
+        "Returns the public-facing badge data needed to render the participant "
         "page. No authentication required. Only returns data for published "
         "templates — unpublished slugs return 404. Exposes only the fields "
         "needed for public rendering, not organiser configuration internals."
     ),
     responses={
         200: {
-            "description": "Published template data.",
+            "description": "Published badge data.",
             "content": {
                 "application/json": {
                     "example": {
                         "status": "success",
-                        "message": "Template data retrieved successfully.",
+                        "message": "Badge data retrieved successfully.",
                         "data": {
                             "title": "HNG Tech Fest 2026",
                             "canvas_data": {"layout": "bold-v1"},
-                            "logo_url": "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png",
+                            "logo_url": "https://res.cloudinary.com/demo/image/upload/badge-logos/abc.png",
                             "default_caption": "I'm attending HNG Tech Fest 2026!",
                             "destination_link": "https://techfest.example.com",
                             "hashtags": ["#HNGTechFest", "#2026"],
@@ -614,7 +700,7 @@ async def upload_logo(
         },
         404: {
             "model": ErrorResponse,
-            "description": "Slug not found or template is not published.",
+            "description": "Slug not found or badge is not published.",
         },
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
@@ -624,185 +710,69 @@ async def get_participant_page(
     request: Request,
     session: DBSession,
     slug: str,
-) -> SuccessResponse[PublicParticipantPageResponse]:
-    """Return public-facing template data for the participant page."""
+) -> SuccessResponse[PublicBadgePageResponse]:
+    """Return public-facing badge data for the participant page."""
     try:
-        template = await get_public_template_by_slug(
+        badge = await get_public_badge_by_slug(
             session=session,
             slug=slug,
         )
-    except PublicTemplateNotFoundError as exc:
+    except PublicBadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found.",
+            detail="Badge not found.",
         ) from exc
 
-    return SuccessResponse(
-        message="Template data retrieved successfully.",
-        data=PublicParticipantPageResponse(
-            title=template.title,
-            canvas_data=template.canvas_data,
-            logo_url=template.logo_url,
-            default_caption=template.default_caption,
-            destination_link=template.destination_link,
-            hashtags=[h.hashtag for h in template.hashtags],
-        ),
-    )
-
-
-@router.get(
-    "/platform",
-    response_model=SuccessResponse[PlatformTemplateListResponse],
-    status_code=status.HTTP_200_OK,
-    summary="List platform templates (gallery)",
-    description=(
-        "Returns all active platform templates. Pass `?category=` to filter by "
-        "gallery tab. No authentication required. "
-        "Valid categories: festivals, hackathons, conferences, community, "
-        "bootcamp, meetups, speakers, trending."
-    ),
-    responses={
-        200: {
-            "description": "Templates retrieved successfully.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "success",
-                        "message": "Platform templates retrieved successfully.",
-                        "data": {
-                            "templates": [
-                                {
-                                    "id": "019e1b66-c4ec-7b80-8c85-84c2fe4f9c84",
-                                    "title": "Achieveher",
-                                    "category": "festivals",
-                                    "thumbnail_url": None,
-                                    "canvas_data": {"layout_id": "photo_gradient_v1"},
-                                    "is_active": True,
-                                    "created_at": "2026-05-18T12:00:00Z",
-                                }
-                            ],
-                            "total": 1,
-                            "page": 1,
-                            "limit": 10,
-                            "prev": None,
-                            "next": None,
-                        },
-                    }
-                }
-            },
-        },
-        400: {
-            "model": ErrorResponse,
-            "description": "Unknown category value.",
-        },
-        422: {
-            "model": ErrorResponse,
-            "description": "Validation error on query parameters.",
-        },
-        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
-    },
-)
-@limiter.limit("60/minute")
-async def list_templates(
-    request: Request,
-    session: DBSession,
-    category: str | None = Query(
-        default=None,
-        description=(
-            "Gallery tab filter. One of: festivals, hackathons, conferences, "
-            "community, bootcamp, meetups, speakers, trending."
-        ),
-        examples=["festivals"],
-    ),
-    page: int = Query(
-        default=1,
-        ge=1,
-        description="Page number (1-based)",
-    ),
-    limit: int = Query(
-        default=10,
-        ge=1,
-        le=100,
-        description="Items per page",
-    ),
-) -> SuccessResponse[PlatformTemplateListResponse]:
-    """Return active platform templates with pagination and optional category filter."""
-    normalised_category = category.strip().lower() if category is not None else None
     try:
-        templates, total = await list_platform_templates(
-            session, category=normalised_category, page=page, limit=limit
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-    base_url = "/api/v1/templates/platform"
-    query_params: dict[str, str | int] = {"limit": limit}
-    if normalised_category:
-        query_params["category"] = normalised_category
-
-    prev_link = None
-    if page > 1:
-        prev_link = f"{base_url}?{urlencode({'page': page - 1, **query_params})}"
-
-    next_link = None
-    if page * limit < total:
-        next_link = f"{base_url}?{urlencode({'page': page + 1, **query_params})}"
+        await increment_badge_share_count(session=session, slug=slug)
+    except Exception:
+        logger.exception("Failed to increment share_count for slug %r", slug)
 
     return SuccessResponse(
-        message="Platform templates retrieved successfully.",
-        data=PlatformTemplateListResponse(
-            templates=[PlatformTemplateResponse.model_validate(t) for t in templates],
-            total=total,
-            page=page,
-            limit=limit,
-            prev=prev_link,
-            next=next_link,
+        message="Badge data retrieved successfully.",
+        data=PublicBadgePageResponse(
+            title=badge.title,
+            canvas_data=badge.canvas_data,
+            logo_url=badge.logo_url,
+            default_caption=badge.default_caption,
+            destination_link=badge.destination_link,
+            hashtags=[h.hashtag for h in badge.hashtags],
         ),
     )
 
 
-@router.get(
-    "/platform/{template_id}",
-    response_model=SuccessResponse[PlatformTemplateResponse],
+@router.post(
+    "/public/{slug}/increment-creation",
+    response_model=SuccessResponse[None],
     status_code=status.HTTP_200_OK,
-    summary="Get a single platform template",
+    summary="Increment badge creation count",
     description=(
-        "Returns the full platform template detail, including canvas_data. "
-        "Used to populate the live preview panel when an organiser clicks a "
-        "gallery card. No authentication required."
+        "Records that a participant has generated a badge from the public page. "
+        "No authentication required. Increments creation_count atomically at the "
+        "database level. Returns 404 if the slug does not resolve to a published badge."
     ),
     responses={
-        200: {"description": "Platform template retrieved successfully."},
+        200: {"description": "Creation count incremented."},
         404: {
             "model": ErrorResponse,
-            "description": "Platform template not found or inactive.",
-        },
-        422: {
-            "model": ErrorResponse,
-            "description": "Validation error on query parameters.",
+            "description": "Slug not found or badge is not published.",
         },
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
     },
 )
 @limiter.limit("60/minute")
-async def get_template(
+async def increment_creation(
     request: Request,
     session: DBSession,
-    template_id: UUID,
-) -> SuccessResponse[PlatformTemplateResponse]:
-    """Return a single active platform template by id."""
+    slug: str,
+) -> SuccessResponse[None]:
+    """Atomically increment the creation counter for a public badge."""
     try:
-        template = await get_platform_template(session, template_id)
-    except PlatformTemplateNotFoundError as exc:
+        await increment_badge_creation_count(session=session, slug=slug)
+    except PublicBadgeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Platform template not found.",
+            detail="Badge not found.",
         ) from exc
 
-    return SuccessResponse(
-        message="Platform template retrieved successfully.",
-        data=PlatformTemplateResponse.model_validate(template),
-    )
+    return SuccessResponse(message="Creation count incremented.")
