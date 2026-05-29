@@ -42,12 +42,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     if isinstance(exc, SQLAlchemyError):
         exc_orig = getattr(exc, "orig", None)
 
-        logger.error(
+        logger.opt(exception=True).error(
             "SQLAlchemyError -> {} | sanitized={} | orig={}",
             exc_type,
             exc_msg,
-            repr(exc_orig),
-            exc_info=True,
+            data_sanitizer.sanitize_exception_for_logging(
+                exc_orig if exc_orig is not None else repr(exc_orig)
+            ),
         )
         return JSONResponse(
             status_code=500,
