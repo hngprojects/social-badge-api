@@ -128,6 +128,8 @@ async def update_profile(
     user: User,
     first_name: str | None = None,
     last_name: str | None = None,
+    email: str | None = None,
+    role: str | None = None,
 ) -> User:
     """Update a user's profile information.
 
@@ -138,6 +140,8 @@ async def update_profile(
         user: The user object to update.
         first_name: New first name (optional).
         last_name: New last name (optional).
+        email: New email address (optional).
+        role: New role/title (optional).
 
     Returns:
         The updated user object.
@@ -146,6 +150,10 @@ async def update_profile(
         user.first_name = first_name
     if last_name is not None:
         user.last_name = last_name
+    if email is not None:
+        user.email = email
+    if role is not None:
+        user.role = role
 
     session.add(user)
     await session.commit()
