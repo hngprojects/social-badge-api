@@ -109,19 +109,19 @@ async def publish_badge(
         raise BadgeAlreadyPublishedError
 
     now = datetime.now(UTC)
-    if template.share_slug is None:
-        for _ in range(settings.MAX_SLUG_RETRIES):
-            template.is_published = True
-            template.published_at = now
-            template.share_slug = generate_share_slug()
-            try:
-                await session.flush()
-                break
-            except IntegrityError:
-                await session.rollback()
-                continue
-        else:
-            raise RuntimeError("Could not generate a unique share slug")
+
+    for _ in range(settings.MAX_SLUG_RETRIES):
+        template.is_published = True
+        template.published_at = now
+        template.share_slug = generate_share_slug()
+        try:
+            await session.flush()
+            break
+        except IntegrityError:
+            await session.rollback()
+            continue
+    else:
+        raise RuntimeError("Could not generate a unique share slug")
 
     await session.commit()
     await session.refresh(template)
