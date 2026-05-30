@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     GOOGLE_OAUTH_STATE_TTL_MINUTES: int = 10
 
     TOKEN_PREFIX: str = "verify:"  # noqa: S105
+    TOKEN_USER_PREFIX: str = "verify_user:"  # noqa: S105
     PASSWORD_RESET_PREFIX: str = "pwd_reset:"  # noqa: S105
     GOOGLE_STATE_PREFIX: str = "oauth:google:state:"
     GOOGLE_EXCHANGE_PREFIX: str = "oauth:google:exchange:"

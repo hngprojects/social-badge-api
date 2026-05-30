@@ -203,3 +203,18 @@ def test_refresh_token_type_differs_from_access_token() -> None:
     )
     assert "type" not in access_payload
     assert refresh_payload["type"] == "refresh"
+
+
+async def test_get_verified_user_id_clears_user_index(
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    """Consuming a verification token also removes the reverse index."""
+    raw, token_hash = generate_token()
+    user_id = "00000000-0000-0000-0000-000000000001"
+    await store_verification_token(fake_redis, token_hash, user_id)
+    assert await fake_redis.get(f"{settings.TOKEN_PREFIX}{token_hash}") is not None
+    assert await fake_redis.get(f"{settings.TOKEN_USER_PREFIX}{user_id}") is not None
+    result = await get_verified_user_id(fake_redis, token_hash)
+    assert result == user_id
+    assert await fake_redis.get(f"{settings.TOKEN_PREFIX}{token_hash}") is None
+    assert await fake_redis.get(f"{settings.TOKEN_USER_PREFIX}{user_id}") is None
