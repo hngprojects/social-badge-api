@@ -123,6 +123,44 @@ async def update_profile_photo(
     return user
 
 
+async def remove_profile_photo(
+    session: AsyncSession,
+    user: User,
+) -> User:
+    """Remove the authenticated user's profile photo.
+
+    Clears profile_photo_url in the database and deletes the asset from
+    Cloudinary. If the user has no photo, this is a no-op. Cloudinary
+    deletion failure is logged but does not prevent the DB field from being
+    cleared.
+
+    Args:
+        session: The database session.
+        user: The user object whose photo should be removed.
+
+    Returns:
+        The updated user object with profile_photo_url set to None.
+    """
+    if user.profile_photo_url:
+        public_id = _extract_cloudinary_public_id(user.profile_photo_url)
+        user.profile_photo_url = None
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        if public_id:
+            try:
+                await delete_asset(public_id)
+                logger.info("Deleted profile photo for user %s: %s", user.id, public_id)
+            except CloudinaryUploadError as exc:
+                logger.warning(
+                    "Failed to delete profile photo from Cloudinary for user %s: %s",
+                    user.id,
+                    exc,
+                )
+    return user
+
+
 async def update_profile(
     session: AsyncSession,
     user: User,

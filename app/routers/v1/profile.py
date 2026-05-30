@@ -10,7 +10,12 @@ from app.dependencies import CurrentUser, DBSession
 from app.schemas.auth import UserResponse
 from app.schemas.profile import DeleteProfileResponse, UpdateProfileRequest
 from app.schemas.response import ErrorResponse, SuccessResponse
-from app.services.profile import delete_profile, update_profile, update_profile_photo
+from app.services.profile import (
+    delete_profile,
+    remove_profile_photo,
+    update_profile,
+    update_profile_photo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -294,5 +299,38 @@ async def upload_profile_photo_endpoint(
 
     return SuccessResponse(
         message="Profile photo updated successfully",
+        data=UserResponse.model_validate(updated_user),
+    )
+
+
+@router.delete(
+    "/photo",
+    response_model=SuccessResponse[UserResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Remove profile photo",
+    description=(
+        "Delete the authenticated user's profile photo. "
+        "The image is removed from Cloudinary and the profile_photo_url is cleared. "
+        "If the user has no photo, the request succeeds with no side-effects."
+    ),
+    responses={
+        200: {"description": "Profile photo removed successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/minute")
+async def remove_profile_photo_endpoint(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+) -> SuccessResponse[UserResponse]:
+    """Remove the authenticated user's profile photo."""
+    updated_user = await remove_profile_photo(session=session, user=current_user)
+
+    logger.info("Removed profile photo for user %s", current_user.id)
+
+    return SuccessResponse(
+        message="Profile photo removed successfully",
         data=UserResponse.model_validate(updated_user),
     )
