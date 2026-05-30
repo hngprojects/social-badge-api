@@ -714,3 +714,102 @@ async def test_upload_profile_photo_rate_limit(
         files={"file": ("test.png", image_data, "image/png")},
     )
     assert response.status_code == 429
+
+
+# ─────────────────────────────────────────────────────────────────
+# DELETE /profile/photo endpoint tests
+# ─────────────────────────────────────────────────────────────────
+
+
+@patch("app.services.profile.delete_asset", new_callable=AsyncMock)
+async def test_remove_profile_photo_success(
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Removing a photo clears profile_photo_url and calls Cloudinary delete."""
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.delete("/api/v1/profile/photo")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Profile photo removed successfully"
+    assert data["data"]["profile_photo_url"] is None
+    mock_delete_asset.assert_called_once()
+
+
+@patch("app.services.profile.delete_asset", new_callable=AsyncMock)
+async def test_remove_profile_photo_no_photo_is_noop(
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Removing a photo when none is set succeeds silently
+    without calling Cloudinary."""
+    user = User(
+        first_name="NoPhoto",
+        last_name="Remove",
+        email="nophoto-remove@example.com",
+        password_hash=hash_password("StrongPassword1!"),
+        is_email_verified=True,
+        profile_photo_url=None,
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    await client.post(
+        "/api/v1/auth/login",
+        json={"email": "nophoto-remove@example.com", "password": "StrongPassword1!"},
+    )
+
+    response = await client.delete("/api/v1/profile/photo")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["profile_photo_url"] is None
+    mock_delete_asset.assert_not_called()
+
+
+async def test_remove_profile_photo_unauthenticated(client: AsyncClient) -> None:
+    """Unauthenticated request returns 401."""
+    response = await client.delete("/api/v1/profile/photo")
+    assert response.status_code == 401
+
+
+@patch("app.services.profile.delete_asset", new_callable=AsyncMock)
+async def test_remove_profile_photo_cloudinary_failure_still_clears_url(
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    profile_user: dict[str, str],
+) -> None:
+    """Cloudinary failure is logged but profile_photo_url is still cleared."""
+    mock_delete_asset.side_effect = CloudinaryUploadError("storage error")
+
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    response = await client.delete("/api/v1/profile/photo")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["profile_photo_url"] is None
+    mock_delete_asset.assert_called_once()
+
+
+@patch("app.services.profile.delete_asset", new_callable=AsyncMock)
+async def test_remove_profile_photo_rate_limit(
+    mock_delete_asset: AsyncMock,
+    client: AsyncClient,
+    db_session: AsyncSession,
+    profile_user: dict[str, str],
+) -> None:
+    """DELETE /profile/photo is rate-limited at 10/minute."""
+    mock_delete_asset.return_value = None
+
+    await client.post("/api/v1/auth/login", json=profile_user)
+
+    for _ in range(10):
+        response = await client.delete("/api/v1/profile/photo")
+        assert response.status_code == 200
+
+    response = await client.delete("/api/v1/profile/photo")
+    assert response.status_code == 429
