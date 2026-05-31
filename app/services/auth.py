@@ -39,6 +39,7 @@ from app.core.token import (
     get_google_oauth_state,
     get_password_reset_user_id,
     hash_token,
+    revoke_previous_verification_token,
     store_google_exchange_code,
     store_google_oauth_state,
     store_password_reset_token,
@@ -102,6 +103,7 @@ async def signup(
     )
     session.add(auth_provider)
 
+    await revoke_previous_verification_token(redis, str(user.id))
     raw_token, token_hash = generate_token()
     await store_verification_token(redis, token_hash, str(user.id))
 
@@ -129,6 +131,8 @@ async def resend_verification_email(
 
     if user.is_email_verified:
         raise EmailAlreadyVerifiedError
+
+    await revoke_previous_verification_token(redis, str(user.id))
 
     raw_token, token_hash = generate_token()
     await store_verification_token(redis, token_hash, str(user.id))
