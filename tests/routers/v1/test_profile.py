@@ -56,7 +56,7 @@ async def test_get_profile_success(
     assert login_response.status_code == 200
 
     # Get profile
-    response = await client.get("/api/v1/profile/")
+    response = await client.get("/api/v1/profile")
     assert response.status_code == 200
 
     data = response.json()
@@ -69,7 +69,7 @@ async def test_get_profile_success(
 
 async def test_get_profile_unauthenticated(client: AsyncClient) -> None:
     """Test that unauthenticated users cannot access profile."""
-    response = await client.get("/api/v1/profile/")
+    response = await client.get("/api/v1/profile")
     assert response.status_code == 401
     data = response.json()
     assert data["status"] == "error"
@@ -87,11 +87,11 @@ async def test_get_profile_rate_limit(
 
     # Make 10 requests (at the limit)
     for _ in range(10):
-        response = await client.get("/api/v1/profile/")
+        response = await client.get("/api/v1/profile")
         assert response.status_code == 200
 
     # 11th request should be rate limited
-    response = await client.get("/api/v1/profile/")
+    response = await client.get("/api/v1/profile")
     assert response.status_code == 429
     data = response.json()
     assert data["status"] == "error"
@@ -114,7 +114,7 @@ async def test_update_profile_success(
 
     # Update profile
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"first_name": "Updated", "last_name": "Name"},
     )
 
@@ -126,7 +126,7 @@ async def test_update_profile_success(
     assert data["data"]["last_name"] == "Name"
 
     # Verify the update persisted
-    response = await client.get("/api/v1/profile/")
+    response = await client.get("/api/v1/profile")
     assert response.json()["data"]["first_name"] == "Updated"
     assert response.json()["data"]["last_name"] == "Name"
 
@@ -141,7 +141,7 @@ async def test_update_profile_first_name_only(
 
     # Update only first_name
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"first_name": "NewFirst"},
     )
 
@@ -161,7 +161,7 @@ async def test_update_profile_last_name_only(
 
     # Update only last_name
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"last_name": "NewLast"},
     )
 
@@ -181,7 +181,7 @@ async def test_update_profile_no_fields_returns_error(
 
     # Try to update with no fields
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={},
     )
 
@@ -201,7 +201,7 @@ async def test_update_profile_empty_strings_rejected(
 
     # Try to update with empty string
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"first_name": "   "},
     )
 
@@ -213,7 +213,7 @@ async def test_update_profile_empty_strings_rejected(
 async def test_update_profile_unauthenticated(client: AsyncClient) -> None:
     """Test that unauthenticated users cannot update profile."""
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"first_name": "Hacker"},
     )
     assert response.status_code == 401
@@ -231,11 +231,11 @@ async def test_update_profile_rate_limit(
 
     # Make 5 requests (at the limit)
     for _ in range(5):
-        response = await client.put("/api/v1/profile/", json=payload)
+        response = await client.put("/api/v1/profile", json=payload)
         assert response.status_code == 200
 
     # 6th request should be rate limited
-    response = await client.put("/api/v1/profile/", json=payload)
+    response = await client.put("/api/v1/profile", json=payload)
     assert response.status_code == 429
     data = response.json()
     assert data["status"] == "error"
@@ -250,7 +250,7 @@ async def test_update_profile_role_only(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"role": "Software Engineer"},
     )
 
@@ -267,9 +267,9 @@ async def test_update_profile_role_persists(
     """role is returned in the GET /profile response after being set."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    await client.put("/api/v1/profile/", json={"role": "Designer"})
+    await client.put("/api/v1/profile", json={"role": "Designer"})
 
-    response = await client.get("/api/v1/profile/")
+    response = await client.get("/api/v1/profile")
     assert response.status_code == 200
     assert response.json()["data"]["role"] == "Designer"
 
@@ -283,7 +283,7 @@ async def test_update_profile_role_cleared_with_empty_string(
     as sending a whitespace-only first_name alone)."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    response = await client.put("/api/v1/profile/", json={"role": "   "})
+    response = await client.put("/api/v1/profile", json={"role": "   "})
     assert response.status_code == 400
     assert "At least one field" in response.json()["message"]
 
@@ -296,7 +296,7 @@ async def test_update_profile_email_only(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"email": "updated-profile@example.com"},
     )
 
@@ -314,7 +314,7 @@ async def test_update_profile_email_normalized(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"email": "  UPPER-Profile@Example.COM  "},
     )
 
@@ -330,7 +330,7 @@ async def test_update_profile_invalid_email_rejected(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"email": "not-an-email"},
     )
 
@@ -345,7 +345,7 @@ async def test_update_profile_role_html_rejected(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/",
+        "/api/v1/profile",
         json={"role": "<script>alert(1)</script>"},
     )
 
@@ -369,7 +369,7 @@ async def test_delete_profile_success(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     # Delete profile
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
 
     assert response.status_code == 200
     data = response.json()
@@ -417,7 +417,7 @@ async def test_delete_profile_without_photo(
     assert response.status_code == 200
 
     # Delete profile
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
 
     assert response.status_code == 200
     data = response.json()
@@ -442,7 +442,7 @@ async def test_delete_profile_cloudinary_failure_still_deletes_user(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     # Delete profile
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
 
     # Should still return success
     assert response.status_code == 200
@@ -460,7 +460,7 @@ async def test_delete_profile_cloudinary_failure_still_deletes_user(
 
 async def test_delete_profile_unauthenticated(client: AsyncClient) -> None:
     """Test that unauthenticated users cannot delete profile."""
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
     assert response.status_code == 401
 
 
@@ -480,7 +480,7 @@ async def test_delete_profile_rate_limit(
     # For now, just test that we can make one delete request
     # Rate limit testing for destructive endpoints is tricky
     await client.post("/api/v1/auth/login", json=profile_user)
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
     assert response.status_code in [200, 429]
 
 
@@ -495,7 +495,7 @@ async def test_delete_profile_extracts_cloudinary_public_id(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     # Delete profile
-    response = await client.delete("/api/v1/profile/")
+    response = await client.delete("/api/v1/profile")
 
     assert response.status_code == 200
 
@@ -530,7 +530,7 @@ async def test_upload_profile_photo_success(
     image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.png", image_data, "image/png")},
     )
 
@@ -563,7 +563,7 @@ async def test_upload_profile_photo_jpeg(
     image_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.jpg", image_data, "image/jpeg")},
     )
 
@@ -591,7 +591,7 @@ async def test_upload_profile_photo_gif(
     image_data = b"GIF89a" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.gif", image_data, "image/gif")},
     )
 
@@ -609,7 +609,7 @@ async def test_upload_profile_photo_unsupported_format(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
     )
 
@@ -632,7 +632,7 @@ async def test_upload_profile_photo_file_too_large(
     large_image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024 * 1024 + 1)
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("large.png", large_image_data, "image/png")},
     )
 
@@ -661,7 +661,7 @@ async def test_upload_profile_photo_deletes_old_photo(
 
     with patch("app.services.profile.delete_asset", new_callable=AsyncMock) as mock_del:
         response = await client.put(
-            "/api/v1/profile/photo",
+            "/api/v1/profilephoto",
             files={"file": ("test.png", image_data, "image/png")},
         )
 
@@ -676,7 +676,7 @@ async def test_upload_profile_photo_unauthenticated(client: AsyncClient) -> None
     image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.png", image_data, "image/png")},
     )
 
@@ -703,14 +703,14 @@ async def test_upload_profile_photo_rate_limit(
     # Make 10 requests (at the limit)
     for _ in range(10):
         response = await client.put(
-            "/api/v1/profile/photo",
+            "/api/v1/profilephoto",
             files={"file": ("test.png", image_data, "image/png")},
         )
         assert response.status_code == 200
 
     # 11th request should be rate limited
     response = await client.put(
-        "/api/v1/profile/photo",
+        "/api/v1/profilephoto",
         files={"file": ("test.png", image_data, "image/png")},
     )
     assert response.status_code == 429
@@ -730,7 +730,7 @@ async def test_remove_profile_photo_success(
     """Removing a photo clears profile_photo_url and calls Cloudinary delete."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    response = await client.delete("/api/v1/profile/photo")
+    response = await client.delete("/api/v1/profilephoto")
 
     assert response.status_code == 200
     data = response.json()
@@ -764,7 +764,7 @@ async def test_remove_profile_photo_no_photo_is_noop(
         json={"email": "nophoto-remove@example.com", "password": "StrongPassword1!"},
     )
 
-    response = await client.delete("/api/v1/profile/photo")
+    response = await client.delete("/api/v1/profilephoto")
 
     assert response.status_code == 200
     assert response.json()["data"]["profile_photo_url"] is None
@@ -773,7 +773,7 @@ async def test_remove_profile_photo_no_photo_is_noop(
 
 async def test_remove_profile_photo_unauthenticated(client: AsyncClient) -> None:
     """Unauthenticated request returns 401."""
-    response = await client.delete("/api/v1/profile/photo")
+    response = await client.delete("/api/v1/profilephoto")
     assert response.status_code == 401
 
 
@@ -788,7 +788,7 @@ async def test_remove_profile_photo_cloudinary_failure_still_clears_url(
 
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    response = await client.delete("/api/v1/profile/photo")
+    response = await client.delete("/api/v1/profilephoto")
 
     assert response.status_code == 200
     assert response.json()["data"]["profile_photo_url"] is None
@@ -808,8 +808,8 @@ async def test_remove_profile_photo_rate_limit(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     for _ in range(10):
-        response = await client.delete("/api/v1/profile/photo")
+        response = await client.delete("/api/v1/profilephoto")
         assert response.status_code == 200
 
-    response = await client.delete("/api/v1/profile/photo")
+    response = await client.delete("/api/v1/profilephoto")
     assert response.status_code == 429

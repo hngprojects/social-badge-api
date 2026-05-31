@@ -1,12 +1,17 @@
+import asyncio
 import logging
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
+from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CloudinaryUploadError
+from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
+from app.core.security import hash_password, verify_password
 from app.models.users import User
+from app.schemas.profile import ChangePasswordRequest
+from app.services.auth import blacklist_access_token_if_valid
 from app.services.cloudinary import delete_asset, upload_logo
 
 logger = logging.getLogger(__name__)
@@ -247,3 +252,48 @@ async def delete_profile(
     await session.commit()
 
     logger.info(f"Deleted user profile: {user_id}")
+
+
+async def change_password(
+    session: AsyncSession,
+    redis: Redis,
+    user: User,
+    payload: ChangePasswordRequest,
+    access_token: str | None,
+) -> None:
+    """Change the authenticated user's password.
+
+    Verifies the current password before applying the change, then
+    blacklists the caller's current access token so any stolen copy of
+    it stops working immediately. The user will need to log in again
+    with the new password.
+
+    OAuth-only accounts (password_hash is None) receive the same
+    InvalidCredentialsError as a wrong password to avoid leaking
+    account auth method to the caller.
+
+    Args:
+        session: The database session.
+        redis: Redis client for token blacklisting.
+        user: The currently authenticated user.
+        payload: Validated request containing current and new passwords.
+        access_token: The caller's raw access token cookie value, used
+            to blacklist it after the password is changed.
+
+    Raises:
+        InvalidCredentialsError: If current_password does not match the
+            stored hash, or if the account has no password set.
+    """
+    if not user.password_hash or not await asyncio.to_thread(
+        verify_password, payload.current_password, user.password_hash
+    ):
+        raise InvalidCredentialsError
+
+    user.password_hash = await asyncio.to_thread(hash_password, payload.new_password)
+    session.add(user)
+    await session.commit()
+
+    # Blacklist the current access token so it cannot be replayed.
+    # blacklist_access_token_if_valid is a no-op when access_token is None
+    # or when the token is already expired, so it is always safe to call.
+    await blacklist_access_token_if_valid(redis, access_token)
