@@ -232,6 +232,13 @@ class BadgeAnalyticsResponse(BaseModel):
     total_active_badges: int = Field(
         ..., description="Count of currently published badges."
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_draft_badges(self) -> int:
+        """Count of draft (unpublished) badges. Derived from total minus active."""
+        return self.total_organiser_badges - self.total_active_badges
+
     total_shares: int = Field(
         ..., description="Sum of share_count across all the organiser's badges."
     )

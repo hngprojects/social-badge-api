@@ -1433,9 +1433,7 @@ async def test_resend_writes_new_user_index_entry(
     new_hash = await fake_redis.get(index_key)
     assert new_hash is not None
     hash_str = new_hash.decode() if isinstance(new_hash, bytes) else new_hash
-    token_key_value = await fake_redis.get(
-        f"{settings.TOKEN_PREFIX}{hash_str}"
-    )
+    token_key_value = await fake_redis.get(f"{settings.TOKEN_PREFIX}{hash_str}")
     assert token_key_value is not None
 
 
