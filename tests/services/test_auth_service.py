@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import (
     AccountLockedError,
+    EmailAlreadyVerifiedError,
     EmailConflictError,
     EmailDeliveryError,
     EmailNotVerifiedError,
@@ -25,12 +26,14 @@ from app.core.token import (
     store_google_exchange_code,
     store_google_oauth_state,
     store_password_reset_token,
+    store_verification_token,
 )
 from app.models.auth import AuthProvider, RefreshToken
 from app.models.users import User
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     SignupRequest,
 )
@@ -47,6 +50,7 @@ from app.services.auth import (
     increment_failed_attempts,
     refresh_session,
     request_password_reset,
+    resend_verification_email,
     reset_attempts,
     reset_password,
     signin,
@@ -1391,3 +1395,62 @@ async def test_exchange_google_code_for_tokens_without_request_stores_nulls(
     assert token is not None
     assert token.user_agent is None
     assert token.ip_address is None
+
+
+# resend_verification_email — token revocation
+async def test_resend_revokes_previous_verification_token(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    """Calling resend invalidates the previously issued token."""
+    user = await _create_unverified_user(db_session, "revoke@example.com")
+    old_raw, old_hash = generate_token()
+    await store_verification_token(fake_redis, old_hash, str(user.id))
+    with patch("app.services.auth.send_verification_email", new_callable=AsyncMock):
+        await resend_verification_email(
+            db_session,
+            fake_redis,
+            ResendVerificationRequest(email="revoke@example.com"),
+        )
+    assert await fake_redis.get(f"{settings.TOKEN_PREFIX}{old_hash}") is None
+
+
+async def test_resend_writes_new_user_index_entry(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    """After resend, the reverse index points to the new token hash."""
+    user = await _create_unverified_user(db_session, "index@example.com")
+
+    with patch("app.services.auth.send_verification_email", new_callable=AsyncMock):
+        await resend_verification_email(
+            db_session,
+            fake_redis,
+            ResendVerificationRequest(email="index@example.com"),
+        )
+
+    index_key = f"{settings.TOKEN_USER_PREFIX}{user.id}"
+    new_hash = await fake_redis.get(index_key)
+    assert new_hash is not None
+    hash_str = new_hash.decode() if isinstance(new_hash, bytes) else new_hash
+    token_key_value = await fake_redis.get(f"{settings.TOKEN_PREFIX}{hash_str}")
+    assert token_key_value is not None
+
+
+async def test_already_verified_raises_and_does_not_send(
+    db_session: AsyncSession,
+    fake_redis: FakeAsyncRedis,
+) -> None:
+    """Service raises EmailAlreadyVerifiedError and never sends an email."""
+    await _create_verified_user(db_session, "alreadyverified@example.com")
+
+    with patch(
+        "app.services.auth.send_verification_email", new_callable=AsyncMock
+    ) as mock_send:
+        with pytest.raises(EmailAlreadyVerifiedError):
+            await resend_verification_email(
+                db_session,
+                fake_redis,
+                ResendVerificationRequest(email="alreadyverified@example.com"),
+            )
+        mock_send.assert_not_called()

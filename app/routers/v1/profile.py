@@ -4,13 +4,24 @@ import logging
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 
-from app.core.exceptions import CloudinaryUploadError
+from app.core.config import settings
+from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
 from app.core.rate_limit import limiter
-from app.dependencies import CurrentUser, DBSession
+from app.dependencies import CurrentUser, DBSession, RedisClient
 from app.schemas.auth import UserResponse
-from app.schemas.profile import DeleteProfileResponse, UpdateProfileRequest
+from app.schemas.profile import (
+    ChangePasswordRequest,
+    DeleteProfileResponse,
+    UpdateProfileRequest,
+)
 from app.schemas.response import ErrorResponse, SuccessResponse
-from app.services.profile import delete_profile, update_profile, update_profile_photo
+from app.services.profile import (
+    change_password,
+    delete_profile,
+    remove_profile_photo,
+    update_profile,
+    update_profile_photo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -295,4 +306,91 @@ async def upload_profile_photo_endpoint(
     return SuccessResponse(
         message="Profile photo updated successfully",
         data=UserResponse.model_validate(updated_user),
+    )
+
+
+@router.delete(
+    "/photo",
+    response_model=SuccessResponse[UserResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Remove profile photo",
+    description=(
+        "Delete the authenticated user's profile photo. "
+        "The image is removed from Cloudinary and the profile_photo_url is cleared. "
+        "If the user has no photo, the request succeeds with no side-effects."
+    ),
+    responses={
+        200: {"description": "Profile photo removed successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/minute")
+async def remove_profile_photo_endpoint(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+) -> SuccessResponse[UserResponse]:
+    """Remove the authenticated user's profile photo."""
+    updated_user = await remove_profile_photo(session=session, user=current_user)
+
+    logger.info("Removed profile photo for user %s", current_user.id)
+
+    return SuccessResponse(
+        message="Profile photo removed successfully",
+        data=UserResponse.model_validate(updated_user),
+    )
+
+
+@router.put(
+    "/password/change",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+    summary="Change password",
+    description=(
+        "Change the authenticated user's password. "
+        "Requires the current password for verification. "
+        "The new password must meet complexity requirements and differ "
+        "from the current password."
+    ),
+    responses={
+        200: {"description": "Password changed successfully"},
+        401: {
+            "model": ErrorResponse,
+            "description": "Not authenticated or current password is incorrect",
+        },
+        422: {"model": ErrorResponse, "description": "Validation error"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("5/minute")
+async def change_user_password(
+    request: Request,
+    session: DBSession,
+    redis: RedisClient,
+    current_user: CurrentUser,
+    payload: ChangePasswordRequest,
+) -> SuccessResponse[None]:
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
+    refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
+    try:
+        await change_password(
+            session=session,
+            redis=redis,
+            user=current_user,
+            payload=payload,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    except InvalidCredentialsError as err:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        ) from err
+
+    logger.info("Password changed for user %s", current_user.id)
+
+    return SuccessResponse(
+        message="Password changed successfully",
+        data=None,
     )

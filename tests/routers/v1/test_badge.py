@@ -2087,6 +2087,7 @@ async def test_analytics_empty_state(
     data = response.json()["data"]
     assert data["total_organiser_badges"] == 0
     assert data["total_active_badges"] == 0
+    assert data["total_draft_badges"] == 0
     assert data["total_shares"] == 0
     assert data["total_badges_created"] == 0
     assert data["platform_template_usage"] == []
@@ -2132,6 +2133,7 @@ async def test_analytics_returns_aggregated_metrics(
     data = response.json()["data"]
     assert data["total_organiser_badges"] == 2
     assert data["total_active_badges"] == 1
+    assert data["total_draft_badges"] == 1
     assert data["total_shares"] == 20
     assert data["total_badges_created"] == 50
     assert len(data["platform_template_usage"]) == 1
@@ -2166,4 +2168,36 @@ async def test_analytics_scoped_to_current_user(
 
     response = await client.get("/api/v1/badges/analytics", cookies=auth_cookies)
     assert response.status_code == 200
-    assert response.json()["data"]["total_organiser_badges"] == 1
+    data = response.json()["data"]
+    assert data["total_organiser_badges"] == 1
+    assert data["total_draft_badges"] == 1
+
+
+async def test_analytics_total_draft_badges(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """total_draft_badges == total_organiser_badges - total_active_badges."""
+    badges = [
+        Badge(
+            organiser_id=test_user.id,
+            platform_template_id=platform_template.id,
+            title=f"Badge {i}",
+            canvas_data={"layout_id": "v1"},
+            is_published=(i < 2),
+            share_slug=f"slug-draft-test-{i}" if i < 2 else None,
+        )
+        for i in range(5)  # 2 published, 3 draft
+    ]
+    db_session.add_all(badges)
+    await db_session.commit()
+
+    response = await client.get("/api/v1/badges/analytics", cookies=auth_cookies)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total_organiser_badges"] == 5
+    assert data["total_active_badges"] == 2
+    assert data["total_draft_badges"] == 3

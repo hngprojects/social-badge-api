@@ -389,11 +389,10 @@ async def test_resend_verification_email_already_verified(
         json={"email": "verified@example.com"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     data = response.json()
-
-    assert data["status"] == "success"
-    assert "verification email has been sent" in data["message"]
+    assert data["status"] == "error"
+    assert "already verified" in data["message"].lower()
 
     mock_send_email.assert_not_called()
 
@@ -1053,7 +1052,7 @@ async def test_update_profile_rejects_xss_in_first_name(
     verified_login_user: dict,
 ) -> None:
     await client.post("/api/v1/auth/login", json=verified_login_user)
-    response = await client.put("/api/v1/profile/", json={"first_name": payload})
+    response = await client.put("/api/v1/profile", json={"first_name": payload})
     assert response.status_code == 422
 
 
@@ -1064,5 +1063,5 @@ async def test_update_profile_rejects_xss_in_last_name(
     verified_login_user: dict,
 ) -> None:
     await client.post("/api/v1/auth/login", json=verified_login_user)
-    response = await client.put("/api/v1/profile/", json={"last_name": payload})
+    response = await client.put("/api/v1/profile", json={"last_name": payload})
     assert response.status_code == 422

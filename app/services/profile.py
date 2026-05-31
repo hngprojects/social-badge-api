@@ -1,12 +1,17 @@
+import asyncio
 import logging
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
+from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import CloudinaryUploadError
+from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
+from app.core.security import hash_password, verify_password
 from app.models.users import User
+from app.schemas.profile import ChangePasswordRequest
+from app.services.auth import logout_session
 from app.services.cloudinary import delete_asset, upload_logo
 
 logger = logging.getLogger(__name__)
@@ -123,6 +128,44 @@ async def update_profile_photo(
     return user
 
 
+async def remove_profile_photo(
+    session: AsyncSession,
+    user: User,
+) -> User:
+    """Remove the authenticated user's profile photo.
+
+    Clears profile_photo_url in the database and deletes the asset from
+    Cloudinary. If the user has no photo, this is a no-op. Cloudinary
+    deletion failure is logged but does not prevent the DB field from being
+    cleared.
+
+    Args:
+        session: The database session.
+        user: The user object whose photo should be removed.
+
+    Returns:
+        The updated user object with profile_photo_url set to None.
+    """
+    if user.profile_photo_url:
+        public_id = _extract_cloudinary_public_id(user.profile_photo_url)
+        user.profile_photo_url = None
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        if public_id:
+            try:
+                await delete_asset(public_id)
+                logger.info("Deleted profile photo for user %s: %s", user.id, public_id)
+            except CloudinaryUploadError as exc:
+                logger.warning(
+                    "Failed to delete profile photo from Cloudinary for user %s: %s",
+                    user.id,
+                    exc,
+                )
+    return user
+
+
 async def update_profile(
     session: AsyncSession,
     user: User,
@@ -209,3 +252,45 @@ async def delete_profile(
     await session.commit()
 
     logger.info(f"Deleted user profile: {user_id}")
+
+
+async def change_password(
+    session: AsyncSession,
+    redis: Redis,
+    user: User,
+    payload: ChangePasswordRequest,
+    access_token: str | None,
+    refresh_token: str | None,
+) -> None:
+    """Change the authenticated user's password.
+
+    Verifies the current password before applying the change, then
+    revokes the caller's current session. The user will need to log in again
+    with the new password.
+
+    OAuth-only accounts (password_hash is None) receive the same
+    InvalidCredentialsError as a wrong password to avoid leaking
+    account auth method to the caller.
+
+    Args:
+        session: The database session.
+        redis: Redis client for token blacklisting.
+        user: The currently authenticated user.
+        payload: Validated request containing current and new passwords.
+        access_token: The caller's raw access token cookie value, used
+            to blacklist it after the password is changed.
+
+    Raises:
+        InvalidCredentialsError: If current_password does not match the
+            stored hash, or if the account has no password set.
+    """
+    if not user.password_hash or not await asyncio.to_thread(
+        verify_password, payload.current_password, user.password_hash
+    ):
+        raise InvalidCredentialsError
+
+    user.password_hash = await asyncio.to_thread(hash_password, payload.new_password)
+    session.add(user)
+    await session.commit()
+
+    await logout_session(session, redis, refresh_token, access_token)

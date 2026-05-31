@@ -36,6 +36,9 @@ async def store_verification_token(
 ) -> None:
     ttl_seconds = settings.VERIFICATION_TOKEN_TTL_MINUTES * 60
     await redis.set(f"{settings.TOKEN_PREFIX}{token_hash}", user_id, ex=ttl_seconds)
+    await redis.set(
+        f"{settings.TOKEN_USER_PREFIX}{user_id}", token_hash, ex=ttl_seconds
+    )
 
 
 async def get_verified_user_id(
@@ -44,7 +47,11 @@ async def get_verified_user_id(
 ) -> str | None:
     key = f"{settings.TOKEN_PREFIX}{token_hash}"
     user_id = await redis.getdel(key)
-    return str(user_id) if user_id else None
+    if user_id:
+        decoded = user_id.decode() if isinstance(user_id, bytes) else str(user_id)
+        await redis.delete(f"{settings.TOKEN_USER_PREFIX}{decoded}")
+        return decoded
+    return None
 
 
 def create_access_token(user_id: UUID) -> str:
@@ -127,3 +134,20 @@ async def get_google_exchange_user_id(
     key = f"{settings.GOOGLE_EXCHANGE_PREFIX}{code_hash}"
     user_id = await redis.getdel(key)
     return str(user_id) if user_id else None
+
+
+async def revoke_previous_verification_token(
+    redis: Redis,
+    user_id: str,
+) -> None:
+    """Delete the user's existing verification token, if any.
+
+    Called before issuing a new token so older email links stop working.
+    """
+    user_index_key = f"{settings.TOKEN_USER_PREFIX}{user_id}"
+    old_hash = await redis.get(user_index_key)
+    if old_hash:
+        if isinstance(old_hash, bytes):
+            old_hash = old_hash.decode()
+        await redis.delete(f"{settings.TOKEN_PREFIX}{old_hash}")
+        await redis.delete(user_index_key)

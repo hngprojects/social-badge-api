@@ -171,6 +171,8 @@ async def create_instance(
                                     "published_at": "2026-05-20T10:00:00Z",
                                     "created_at": "2026-05-18T09:00:00Z",
                                     "updated_at": "2026-05-20T10:00:00Z",
+                                    "total_shares": 42,
+                                    "total_badges_created": 7,
                                 }
                             ],
                             "total": 1,
@@ -249,6 +251,7 @@ async def list_instances(
                         "data": {
                             "total_organiser_badges": 4,
                             "total_active_badges": 2,
+                            "total_draft_badges": 2,
                             "total_shares": 87,
                             "total_badges_created": 152,
                             "platform_template_usage": [
