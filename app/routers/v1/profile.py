@@ -372,6 +372,7 @@ async def change_user_password(
     payload: ChangePasswordRequest,
 ) -> SuccessResponse[None]:
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
+    refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     try:
         await change_password(
             session=session,
@@ -379,6 +380,7 @@ async def change_user_password(
             user=current_user,
             payload=payload,
             access_token=access_token,
+            refresh_token=refresh_token,
         )
     except InvalidCredentialsError as err:
         raise HTTPException(

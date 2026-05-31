@@ -11,7 +11,7 @@ from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
 from app.core.security import hash_password, verify_password
 from app.models.users import User
 from app.schemas.profile import ChangePasswordRequest
-from app.services.auth import blacklist_access_token_if_valid
+from app.services.auth import logout_session
 from app.services.cloudinary import delete_asset, upload_logo
 
 logger = logging.getLogger(__name__)
@@ -260,12 +260,12 @@ async def change_password(
     user: User,
     payload: ChangePasswordRequest,
     access_token: str | None,
+    refresh_token: str | None,
 ) -> None:
     """Change the authenticated user's password.
 
     Verifies the current password before applying the change, then
-    blacklists the caller's current access token so any stolen copy of
-    it stops working immediately. The user will need to log in again
+    revokes the caller's current session. The user will need to log in again
     with the new password.
 
     OAuth-only accounts (password_hash is None) receive the same
@@ -293,7 +293,4 @@ async def change_password(
     session.add(user)
     await session.commit()
 
-    # Blacklist the current access token so it cannot be replayed.
-    # blacklist_access_token_if_valid is a no-op when access_token is None
-    # or when the token is already expired, so it is always safe to call.
-    await blacklist_access_token_if_valid(redis, access_token)
+    await logout_session(session, redis, refresh_token, access_token)

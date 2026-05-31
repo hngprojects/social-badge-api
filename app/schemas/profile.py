@@ -129,6 +129,13 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError("new_password must not exceed 500 bytes")
         return validate_password_strength(val)
 
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_confirm_password_length(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("confirm_password must not exceed 500 bytes")
+        return val
+
     @model_validator(mode="after")
     def passwords_must_match(self) -> "ChangePasswordRequest":
         if self.new_password != self.confirm_password:

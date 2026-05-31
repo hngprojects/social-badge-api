@@ -530,7 +530,7 @@ async def test_upload_profile_photo_success(
     image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.png", image_data, "image/png")},
     )
 

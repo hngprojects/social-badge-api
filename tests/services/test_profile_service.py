@@ -55,6 +55,7 @@ async def test_oauth_only_account_raises_invalid_credentials(
             user,
             _payload(),
             access_token=None,
+            refresh_token=None,
         )
 
 
@@ -73,6 +74,7 @@ async def test_oauth_only_account_hash_remains_none(
             user,
             _payload(),
             access_token=None,
+            refresh_token=None,
         )
 
     await db_session.refresh(user)
