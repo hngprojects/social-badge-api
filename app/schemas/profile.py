@@ -1,9 +1,17 @@
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.core.sanitizer import validate_no_html
+from app.core.security import validate_password_strength
 
 
 class UpdateProfileRequest(BaseModel):
@@ -85,3 +93,57 @@ class DeleteProfileResponse(BaseModel):
         description="The ID of the deleted user.",
         json_schema_extra={"example": "123e4567-e89b-12d3-a456-426614174000"},
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(
+        ...,
+        description="The user's current password.",
+        json_schema_extra={"example": "OldPassword1!"},
+    )
+    new_password: str = Field(
+        ...,
+        description=(
+            "Must contain at least one uppercase letter, one lowercase letter, "
+            "one number, and one special character."
+        ),
+        json_schema_extra={"example": "NewPassword1!"},
+    )
+    confirm_password: str = Field(
+        ...,
+        description="Must match new_password exactly.",
+        json_schema_extra={"example": "NewPassword1!"},
+    )
+
+    @field_validator("current_password")
+    @classmethod
+    def validate_current_password_length(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("current_password must not exceed 500 bytes")
+        return val
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("new_password must not exceed 500 bytes")
+        return validate_password_strength(val)
+
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_confirm_password_length(cls, val: str) -> str:
+        if len(val.encode("utf-8")) > 500:
+            raise ValueError("confirm_password must not exceed 500 bytes")
+        return val
+
+    @model_validator(mode="after")
+    def passwords_must_match(self) -> "ChangePasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+    @model_validator(mode="after")
+    def new_must_differ_from_current(self) -> "ChangePasswordRequest":
+        if self.current_password == self.new_password:
+            raise ValueError("New password must differ from the current password")
+        return self
