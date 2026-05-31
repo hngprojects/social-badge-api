@@ -106,6 +106,10 @@ async def seed_platform_templates() -> None:
             "Spark Support",
             "Meet Our Speaker",
             "Keynote Speaker",
+            "Achieveher",
+            "Dev Summit",
+            "Men's Summit",
+            "Next Gen",
         }
 
         deleted = 0
