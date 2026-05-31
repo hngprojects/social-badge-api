@@ -18,24 +18,24 @@ def test_valid_payload_is_accepted() -> None:
 def test_missing_current_password_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ChangePasswordRequest(
-            new_password="NewPassword1!",
-            confirm_password="NewPassword1!",
+            new_password="NewPassword1!",  # noqa: S106
+            confirm_password="NewPassword1!",  # noqa: S106
         )
 
 
 def test_missing_new_password_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ChangePasswordRequest(
-            current_password="OldPassword1!",
-            confirm_password="NewPassword1!",
+            current_password="OldPassword1!",  # noqa: S106
+            confirm_password="NewPassword1!",  # noqa: S106
         )
 
 
 def test_missing_confirm_password_is_rejected() -> None:
     with pytest.raises(ValidationError):
         ChangePasswordRequest(
-            current_password="OldPassword1!",
-            new_password="NewPassword1!",
+            current_password="OldPassword1!",  # noqa: S106
+            new_password="NewPassword1!",  # noqa: S106
         )
 
 

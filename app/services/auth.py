@@ -235,7 +235,7 @@ async def signin(
     return existing_user, access_token, raw_refresh_token
 
 
-async def blacklist_access_token_if_valid(
+async def _blacklist_access_token_if_valid(
     redis: Redis, access_token: str | None
 ) -> None:
     if not access_token:
@@ -334,7 +334,7 @@ async def refresh_session(
     if not user:
         raise InvalidRefreshTokenError
 
-    await blacklist_access_token_if_valid(redis, access_token)
+    await _blacklist_access_token_if_valid(redis, access_token)
 
     token_obj.is_revoked = True
     token_obj.last_used_at = now
@@ -385,7 +385,7 @@ async def logout_session(
             refresh_token_obj.is_revoked = True
             await session.commit()
 
-    await blacklist_access_token_if_valid(redis, access_token)
+    await _blacklist_access_token_if_valid(redis, access_token)
 
 
 def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> None:
@@ -865,7 +865,7 @@ async def revoke_all_user_sessions(
 
     await session.commit()
 
-    await blacklist_access_token_if_valid(redis, access_token)
+    await _blacklist_access_token_if_valid(redis, access_token)
 
     logger.info(
         "logout_all.sessions_revoked",
