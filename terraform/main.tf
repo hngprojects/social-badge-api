@@ -458,7 +458,8 @@ resource "null_resource" "bootstrap_app" {
   connection {
     type        = "ssh"
     user        = var.app_server_ssh_user
-    private_key = file(var.ssh_private_key_path)
+    private_key = var.app_server_ssh_password == "" ? file(var.ssh_private_key_path) : null
+    password    = var.app_server_ssh_password == "" ? null : var.app_server_ssh_password
     host        = var.app_server_ssh_host
     timeout     = "10m"
   }
@@ -475,7 +476,7 @@ resource "null_resource" "bootstrap_app" {
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/app-agent.sh",
-      "sudo MONITORING_SERVER_IP='${aws_eip.monitoring.public_ip}' APP_PORT='${var.app_server_app_port}' APP_LOG_FILE='${var.app_server_app_log_file}' APP_ERROR_LOG_FILE='${var.app_server_app_error_log_file}' bash /tmp/app-agent.sh",
+      "printf '%s\\n' '${var.app_server_ssh_password}' | sudo -S -p '' env MONITORING_SERVER_IP='${aws_eip.monitoring.public_ip}' APP_PORT='${var.app_server_app_port}' APP_LOG_FILE='${var.app_server_app_log_file}' APP_ERROR_LOG_FILE='${var.app_server_app_error_log_file}' bash /tmp/app-agent.sh",
       "rm -f /tmp/app-agent.sh"
     ]
   }

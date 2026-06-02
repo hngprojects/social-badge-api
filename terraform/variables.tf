@@ -48,6 +48,13 @@ variable "app_server_ssh_user" {
   default     = "ubuntu"
 }
 
+variable "app_server_ssh_password" {
+  description = "SSH password for the existing application server. Leave empty to use ssh_private_key_path instead."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "app_server_source_cidr" {
   description = "CIDR for the existing app server as seen by the monitoring server, used to allow OTLP/Loki ingress (for one public IP, use x.x.x.x/32)"
   type        = string

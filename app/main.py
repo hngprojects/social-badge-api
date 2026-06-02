@@ -1,7 +1,8 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 
@@ -68,6 +69,14 @@ def root(request: Request) -> dict[str, str]:
     return {"message": f"{settings.PROJECT_NAME} is running"}
 
 
+def _verify_metrics_token(authorization: Annotated[str | None, Header()] = None) -> None:
+    token = settings.METRICS_TOKEN
+    if not token:
+        return
+    if authorization != f"Bearer {token}":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+
 @app.get("/metrics", include_in_schema=False)
-def metrics() -> Response:
+def metrics(_: Annotated[None, Depends(_verify_metrics_token)]) -> Response:
     return metrics_response()

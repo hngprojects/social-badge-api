@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
 
+    METRICS_TOKEN: str = ""
+
     LOG_LEVEL: str = "INFO"
     LOG_FILE: Path = Path("logs/app.log")
 
@@ -151,6 +153,9 @@ class Settings(BaseSettings):
 
         if not self.SMTP_USER.strip() or not self.SMTP_PASSWORD.strip():
             raise ValueError("SMTP fallback credentials must be set in production")
+
+        if not self.METRICS_TOKEN.strip():
+            raise ValueError("METRICS_TOKEN must be set in production")
 
         return self
 

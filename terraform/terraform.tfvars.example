@@ -18,6 +18,7 @@ engineer_ips = [
 # Terraform will SSH into this server and run scripts/app-agent.sh.
 app_server_ssh_host            = "198.51.100.10"
 app_server_ssh_user            = "ubuntu"
+app_server_ssh_password        = "" # set to "gideon" if this server uses password SSH
 app_server_source_cidr         = "198.51.100.10/32"
 app_server_metrics_host        = "198.51.100.10"
 app_server_app_port            = 8000

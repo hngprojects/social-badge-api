@@ -1683,6 +1683,8 @@ write_config /etc/lgtm/alertmanager/templates/slack.tmpl root:alertmanager 640 <
 *Host:*      {{ if .Labels.instance }}{{ .Labels.instance }}{{ else if .Labels.slo }}SLO: {{ .Labels.slo }}{{ else }}N/A{{ end }}
 *Status:*    {{ if eq $.Status "resolved" }}:white_check_mark: RESOLVED{{ else }}:fire: FIRING{{ end }}
 *Detail:*    {{ .Annotations.description }}
+*Fired WAT:* {{ .StartsAt | tz "Africa/Lagos" | date "2006-01-02 15:04:05 MST" }}
+*Fired UTC:* {{ .StartsAt | tz "UTC" | date "2006-01-02 15:04:05 MST" }}
 {{ if .Annotations.dashboard_url }}*Dashboard:* <{{ .Annotations.dashboard_url }}|Open in Grafana>{{ end }}
 {{ if .Annotations.runbook_url }}*Runbook:*   <{{ .Annotations.runbook_url }}|View Runbook>{{ end }}
 *Fired:*     {{ .StartsAt | since }}{{ if eq $.Status "resolved" }}
@@ -1700,15 +1702,18 @@ write_config /etc/lgtm/alertmanager/templates/email.tmpl root:alertmanager 640 <
 
 {{ define "email.body" -}}
 {{ range .Alerts }}
+Service:   Flare Tag
 Alert:     {{ .Annotations.summary }}
 Severity:  {{ .Labels.severity }}
 Instance:  {{ if .Labels.instance }}{{ .Labels.instance }}{{ else if .Labels.slo }}SLO: {{ .Labels.slo }}{{ else }}N/A{{ end }}
 Status:    {{ $.Status }}
 Detail:    {{ .Annotations.description }}
+Fired WAT: {{ .StartsAt | tz "Africa/Lagos" | date "2006-01-02 15:04:05 MST" }}
+Fired UTC: {{ .StartsAt | tz "UTC" | date "2006-01-02 15:04:05 MST" }}
 {{ if .Annotations.dashboard_url }}Dashboard: {{ .Annotations.dashboard_url }}{{ end }}
 {{ if .Annotations.runbook_url }}Runbook:   {{ .Annotations.runbook_url }}{{ end }}
-Started:   {{ .StartsAt }}
-{{ if eq $.Status "resolved" }}Resolved:  {{ .EndsAt }}{{ end }}
+{{ if eq $.Status "resolved" }}Resolved WAT: {{ .EndsAt | tz "Africa/Lagos" | date "2006-01-02 15:04:05 MST" }}
+Resolved UTC: {{ .EndsAt | tz "UTC" | date "2006-01-02 15:04:05 MST" }}{{ end }}
 
 ---
 {{ end }}

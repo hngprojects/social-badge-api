@@ -14,8 +14,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "sum by(endpoint) (rate(http_requests_total[1m]))",
-        "legendFormat": "{{endpoint}}"
+        "expr": "sum by(route) (rate(http_requests_total[1m]))",
+        "legendFormat": "{{route}}"
       }],
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     },

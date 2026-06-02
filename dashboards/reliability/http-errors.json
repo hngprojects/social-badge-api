@@ -43,25 +43,25 @@
     },
     {
       "id": 3,
-      "title": "5xx by Endpoint",
+      "title": "5xx by Route",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "sum by(endpoint) (rate(http_requests_total{status_code=~\"5..\"}[5m]))",
-        "legendFormat": "{{endpoint}}"
+        "expr": "sum by(route) (rate(http_requests_total{status_code=~\"5..\"}[5m]))",
+        "legendFormat": "{{route}}"
       }],
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     },
     {
       "id": 4,
-      "title": "4xx by Endpoint",
+      "title": "4xx by Route",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "sum by(endpoint) (rate(http_requests_total{status_code=~\"4..\"}[5m]))",
-        "legendFormat": "{{endpoint}}"
+        "expr": "sum by(route) (rate(http_requests_total{status_code=~\"4..\"}[5m]))",
+        "legendFormat": "{{route}}"
       }],
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     },
@@ -90,13 +90,13 @@
     },
     {
       "id": 6,
-      "title": "Top 5 Endpoints by Error Count",
+      "title": "Top 5 Routes by Error Count",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "topk(5, sum by(endpoint) (rate(http_requests_total{status_code=~\"5..\"}[5m])))",
-        "legendFormat": "{{endpoint}}"
+        "expr": "topk(5, sum by(route) (rate(http_requests_total{status_code=~\"5..\"}[5m])))",
+        "legendFormat": "{{route}}"
       }],
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     }
