@@ -15,6 +15,7 @@ dependencies = [
     "fastapi[all]>=0.136.1",
     "httpx>=0.28.1",
     "pillow>=12.2.0",
+    "prometheus-client>=0.23.1",
     "python-jose[cryptography]>=3.5.0",
     "redis[hiredis]>=7.4.0",
     "resend>=2.30.0",

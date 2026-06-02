@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 
@@ -9,7 +9,12 @@ import app.core.pillow as _pillow_init  # noqa: F401 — must precede any Image.
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
-from app.core.middleware import ContentSizeLimitMiddleware, RequestLoggingMiddleware
+from app.core.metrics import metrics_response
+from app.core.middleware import (
+    ContentSizeLimitMiddleware,
+    PrometheusMetricsMiddleware,
+    RequestLoggingMiddleware,
+)
 from app.core.rate_limit import limiter
 from app.db.redis import redis_pool
 from app.routers.v1 import api_router
@@ -29,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
+app.add_middleware(PrometheusMetricsMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     ContentSizeLimitMiddleware,
@@ -60,3 +66,8 @@ register_exception_handlers(app)
 @limiter.limit("15/minute")
 def root(request: Request) -> dict[str, str]:
     return {"message": f"{settings.PROJECT_NAME} is running"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return metrics_response()

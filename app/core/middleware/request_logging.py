@@ -51,7 +51,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             ctx["headers"] = safe_hdrs
 
         async with RequestContextLogger(request_id=request_id, **ctx):
-            is_health_check = path in {"/", "/health", "/api/v1/health"}
+            is_health_check = path in {"/", "/health", "/api/v1/health", "/metrics"}
 
             if not is_health_check:
                 logger.info("→ {} {}", method, path)
