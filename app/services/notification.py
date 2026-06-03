@@ -8,8 +8,8 @@ from app.models import UserNotificationPreference
 from app.schemas.notification import NotificationPreferencesResponse
 
 _DEFAULTS: dict[str, bool] = {
-    "email_template_published": False,
-    "email_new_signin": False,
+    "email_template_published": True,
+    "email_new_signin": True,
 }
 
 

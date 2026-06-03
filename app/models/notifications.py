@@ -28,10 +28,10 @@ class UserNotificationPreference(Base):
     )
 
     email_template_published: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
+        Boolean, default=True, nullable=False
     )
     email_new_signin: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
+        Boolean, default=True, nullable=False
     )
 
     updated_at: Mapped[datetime] = mapped_column(

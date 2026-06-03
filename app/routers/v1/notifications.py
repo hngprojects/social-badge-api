@@ -74,9 +74,15 @@ async def patch_preferences(
     request: Request,
     session: DBSession,
     current_user: CurrentUser,
-    payload: UpdateNotificationPreferencesRequest,
+    payload: UpdateNotificationPreferencesRequest | None = None,
 ) -> SuccessResponse[NotificationPreferencesResponse]:
     """Apply a partial update to the organiser's notification preferences."""
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body must include at least one preference field.",
+        )
+
     # Strip fields the client left as None (not sent).
     updates = {key: val for key, val in payload.model_dump().items() if val is not None}
 
