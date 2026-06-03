@@ -782,21 +782,101 @@ async def test_get_participant_page_was_published_then_unpublished(
 # ── share_count / creation_count ──────────────────────────────────────────────
 
 
-async def test_get_participant_page_increments_share_count(
+async def test_get_participant_page_does_not_increment_share_count(
     client: AsyncClient,
     db_session: AsyncSession,
     published_template: Badge,
 ) -> None:
-    """Each GET /badges/public/{slug} increments share_count by 1."""
+    """GET /badges/public/{slug} should NOT increment share_count anymore.
+
+    Share increments are now decoupled into the dedicated
+    /badges/public/{slug}/increment-share endpoint, called explicitly by
+    the FE on share actions.
+    """
     assert published_template.share_count == 0
 
     await client.get(f"/api/v1/badges/public/{published_template.share_slug}")
     await db_session.refresh(published_template)
-    assert published_template.share_count == 1
+    assert published_template.share_count == 0
 
     await client.get(f"/api/v1/badges/public/{published_template.share_slug}")
     await db_session.refresh(published_template)
+    assert published_template.share_count == 0
+
+
+async def test_increment_share_success(
+    client: AsyncClient,
+    published_template: Badge,
+) -> None:
+    """POST /badges/public/{slug}/increment-share returns 200."""
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-share"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "Share count increment scheduled" in data["message"]
+
+
+async def test_increment_share_increments_count(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    published_template: Badge,
+) -> None:
+    """share_count increases by 1 for each POST call."""
+    assert published_template.share_count == 0
+
+    await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-share"
+    )
+    await db_session.refresh(published_template)
+    assert published_template.share_count == 1
+
+    await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-share"
+    )
+    await db_session.refresh(published_template)
     assert published_template.share_count == 2
+
+
+async def test_increment_share_unpublished_returns_404(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+    platform_template: PlatformTemplate,
+) -> None:
+    """Unpublished badge slug returns 404."""
+    template = Badge(
+        organiser_id=test_user.id,
+        platform_template_id=platform_template.id,
+        title="Draft Event",
+        canvas_data={"layout": "test-v1"},
+        is_published=False,
+        share_slug="draftshare01",
+    )
+    db_session.add(template)
+    await db_session.commit()
+
+    response = await client.post("/api/v1/badges/public/draftshare01/increment-share")
+    assert response.status_code == 404
+
+
+async def test_increment_share_nonexistent_slug_returns_404(
+    client: AsyncClient,
+) -> None:
+    response = await client.post("/api/v1/badges/public/doesnotexist99/increment-share")
+    assert response.status_code == 404
+
+
+async def test_increment_share_no_auth_required(
+    client: AsyncClient,
+    published_template: Badge,
+) -> None:
+    """No authentication required for the increment-share endpoint."""
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-share"
+    )
+    assert response.status_code == 200
 
 
 async def test_increment_creation_success(

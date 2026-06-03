@@ -255,15 +255,20 @@ _PUBLIC_WHERE = (
 async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
     """Atomically increment share_count for a published badge.
 
-    Called after a successful public page fetch; silently no-ops if the row
-    has since disappeared (best-effort counter — accuracy is not critical).
+    Raises PublicBadgeNotFoundError when the slug does not resolve to a
+    published, non-deleted badge so the router can return 404.
     """
-    await session.execute(
-        sa_update(Badge)
-        .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
-        .values(share_count=Badge.share_count + 1)
+    result = cast(
+        CursorResult[Any],
+        await session.execute(
+            sa_update(Badge)
+            .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+            .values(share_count=Badge.share_count + 1)
+        ),
     )
     await session.commit()
+    if result.rowcount == 0:
+        raise PublicBadgeNotFoundError
 
 
 async def increment_badge_creation_count(session: AsyncSession, slug: str) -> None:
