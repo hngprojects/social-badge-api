@@ -56,7 +56,7 @@ class LogFormat:
         context_parts = []
 
         for key, value in extras.items():
-            if isinstance(value, (dict, list, tuple)):
+            if isinstance(value, dict | list | tuple):
                 safe_value = json.dumps(value, default=str)
             else:
                 safe_value = str(value)

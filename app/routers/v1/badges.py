@@ -2,7 +2,16 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 
 from app.core.exceptions import (
     BadgeAlreadyPublishedError,
@@ -726,11 +735,6 @@ async def get_participant_page(
             detail="Badge not found.",
         ) from exc
 
-    try:
-        await increment_badge_share_count(session=session, slug=slug)
-    except Exception:
-        logger.exception("Failed to increment share_count for slug %r", slug)
-
     return SuccessResponse(
         message="Badge data retrieved successfully.",
         data=PublicBadgePageResponse(
@@ -779,3 +783,45 @@ async def increment_creation(
         ) from exc
 
     return SuccessResponse(message="Creation count incremented.")
+
+
+@router.post(
+    "/public/{slug}/increment-share",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+    summary="Increment badge share count",
+    description=(
+        "Records that a participant has shared a badge. "
+        "Intended to be called by the FE when a share action actually occurs "
+        "(not on every page load). The increment runs as a background task so "
+        "the response returns immediately. Returns 404 if the slug does not "
+        "resolve to a published badge."
+    ),
+    responses={
+        200: {"description": "Share count increment scheduled."},
+        404: {
+            "model": ErrorResponse,
+            "description": "Slug not found or badge is not published.",
+        },
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def increment_share(
+    request: Request,
+    session: DBSession,
+    slug: str,
+    background_tasks: BackgroundTasks,
+) -> SuccessResponse[None]:
+    """Atomically increment the share counter for a public badge."""
+    try:
+        await get_public_badge_by_slug(session=session, slug=slug)
+    except PublicBadgeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Badge not found.",
+        ) from exc
+
+    background_tasks.add_task(increment_badge_share_count, session, slug)
+
+    return SuccessResponse(message="Share count increment scheduled.")
