@@ -173,9 +173,9 @@ class DataSanitizer:
             return None
         if isinstance(value, dict):
             return self._sanitize_dict(value, max_depth)
-        elif isinstance(value, (list, tuple)):
+        elif isinstance(value, list | tuple):
             return self._sanitize_list(list(value), max_depth)
-        elif isinstance(value, (int, float, bool)):
+        elif isinstance(value, int | float | bool):
             return value
         else:
             return self._sanitize_string(str(value))
@@ -186,7 +186,7 @@ class DataSanitizer:
             pattern.search(sql) for pattern in self.sensitive_patterns
         )
 
-        if isinstance(params, (list, tuple)):
+        if isinstance(params, list | tuple):
             sanitized_params = []
             for param in params:
                 should_mask = False
