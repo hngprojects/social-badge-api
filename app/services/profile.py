@@ -215,9 +215,10 @@ async def delete_profile(
 ) -> None:
     """Delete a user's profile, associated Cloudinary assets, and invalidate sessions.
 
-    Fetches the user and their badges, deletes all Cloudinary assets
-    (profile photo and badge logos/thumbnails), invalidates the current
-    session, then removes the user record from the database.
+    Fetches the user and their badges to collect Cloudinary asset IDs,
+    then deletes the user record from the database (the authoritative action).
+    Cloudinary asset cleanup and session invalidation run as best-effort
+    post-commit work so a DB failure never leaves orphaned side effects.
 
     Args:
         session: The database session.
@@ -256,7 +257,15 @@ async def delete_profile(
             if thumb_id:
                 public_ids_to_delete.append(thumb_id)
 
-    # Best-effort delete all Cloudinary assets concurrently
+    # Delete the user record from the database first (cascades to badges, tokens, etc.)
+    # This is the authoritative action; external cleanup is best-effort post-commit.
+    delete_stmt = delete(User).where(User.id == user_id)
+    await session.execute(delete_stmt)
+    await session.commit()
+
+    logger.info("Deleted user profile: %s", user_id)
+
+    # Best-effort post-commit: delete Cloudinary assets concurrently
     if public_ids_to_delete:
         results = await asyncio.gather(
             *(delete_asset(pid) for pid in public_ids_to_delete),
@@ -273,15 +282,11 @@ async def delete_profile(
             else:
                 logger.info("Deleted Cloudinary asset %s for user %s", pid, user_id)
 
-    # Invalidate the current session
-    await logout_session(session, redis, refresh_token, access_token)
-
-    # Delete the user record from the database (cascades to badges, tokens, etc.)
-    delete_stmt = delete(User).where(User.id == user_id)
-    await session.execute(delete_stmt)
-    await session.commit()
-
-    logger.info("Deleted user profile: %s", user_id)
+    # Best-effort post-commit: invalidate the current session (blacklist access token)
+    try:
+        await logout_session(session, redis, refresh_token, access_token)
+    except Exception:
+        logger.warning("Failed to invalidate session for deleted user %s", user_id)
 
 
 async def change_password(
