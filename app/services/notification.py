@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,13 +55,18 @@ async def update_notification_preferences(
         **updates,
     }
 
+    conflict_updates: dict[str, object] = {
+        **updates,
+        "updated_at": func.now(),
+    }
+
     stmt = (
         pg_insert(UserNotificationPreference)
         .values(**insert_values)
         .on_conflict_do_update(
             index_elements=["user_id"],
             # Only overwrite the columns the client explicitly sent.
-            set_=updates,
+            set_=conflict_updates,
         )
     )
 

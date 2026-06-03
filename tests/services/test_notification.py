@@ -1,9 +1,12 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import hash_password
+from app.models import UserNotificationPreference
 from app.models.users import User
 from app.services.notification import (
     get_notification_preferences,
@@ -60,22 +63,36 @@ async def test_update_preferences_existing_partial(
 ) -> None:
     """Updating an existing preference partially updates only the specified fields,
     leaving others unchanged."""
+
     # Create initial preferences (both False)
-    await update_notification_preferences(
+    prefs1 = await update_notification_preferences(
         db_session,
         service_user.id,
         {"email_template_published": False, "email_new_signin": False},
     )
+    t1 = prefs1.updated_at
+    assert t1 is not None
+
+    # Artificially set updated_at back in time to verify it gets updated
+    past_time = datetime.now(UTC) - timedelta(seconds=10)
+    await db_session.execute(
+        update(UserNotificationPreference)
+        .where(UserNotificationPreference.user_id == service_user.id)
+        .values(updated_at=past_time)
+    )
+    await db_session.commit()
 
     # Perform a partial update to enable signin notifications
-    prefs = await update_notification_preferences(
+    prefs2 = await update_notification_preferences(
         db_session,
         service_user.id,
         {"email_new_signin": True},
     )
 
-    assert prefs.email_template_published is False  # Left unchanged
-    assert prefs.email_new_signin is True  # Updated
+    assert prefs2.email_template_published is False  # Left unchanged
+    assert prefs2.email_new_signin is True  # Updated
+    assert prefs2.updated_at is not None
+    assert prefs2.updated_at > past_time
 
 
 async def test_concurrent_updates_last_write_wins(
@@ -132,3 +149,34 @@ async def test_concurrent_updates_last_write_wins(
             )
 
     await engine.dispose()
+
+
+async def test_update_preferences_bumps_updated_at(
+    db_session: AsyncSession,
+    service_user: User,
+) -> None:
+    """Updating existing preferences bumps the updated_at timestamp."""
+
+    # 1. Create the preference
+    prefs1 = await update_notification_preferences(
+        db_session, service_user.id, {"email_new_signin": False}
+    )
+    t1 = prefs1.updated_at
+    assert t1 is not None
+
+    # 2. Artificially set updated_at back in time to verify it gets updated
+    past_time = datetime.now(UTC) - timedelta(seconds=10)
+    await db_session.execute(
+        update(UserNotificationPreference)
+        .where(UserNotificationPreference.user_id == service_user.id)
+        .values(updated_at=past_time)
+    )
+    await db_session.commit()
+
+    # 3. Update the preference again (triggering conflict update)
+    prefs2 = await update_notification_preferences(
+        db_session, service_user.id, {"email_new_signin": True}
+    )
+    t2 = prefs2.updated_at
+    assert t2 is not None
+    assert t2 > past_time

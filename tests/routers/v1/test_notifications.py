@@ -55,7 +55,7 @@ async def test_get_returns_defaults_for_new_organiser(
     assert data["message"] == "Notification preferences retrieved successfully."
     assert data["data"]["email_template_published"] is True
     assert data["data"]["email_new_signin"] is True
-    assert "updated_at" in data["data"]
+    assert data["data"]["updated_at"] is None
 
 
 async def test_get_returns_saved_preferences(
@@ -80,6 +80,7 @@ async def test_get_returns_saved_preferences(
     data = get_response.json()
     assert data["data"]["email_template_published"] is False
     assert data["data"]["email_new_signin"] is True
+    assert data["data"]["updated_at"] is not None
 
 
 async def test_get_unauthenticated_returns_401(client: AsyncClient) -> None:

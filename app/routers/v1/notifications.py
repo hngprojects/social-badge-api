@@ -14,6 +14,8 @@ from app.services.notification import (
 
 router = APIRouter()
 
+INVALID_PREFERENCE_ERROR = "Request body must include at least one preference field."
+
 
 @router.get(
     "",
@@ -80,7 +82,7 @@ async def patch_preferences(
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request body must include at least one preference field.",
+            detail=INVALID_PREFERENCE_ERROR,
         )
 
     # Strip fields the client left as None (not sent).
@@ -89,7 +91,7 @@ async def patch_preferences(
     if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request body must include at least one preference field.",
+            detail=INVALID_PREFERENCE_ERROR,
         )
 
     prefs = await update_notification_preferences(
