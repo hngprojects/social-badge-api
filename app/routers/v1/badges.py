@@ -45,6 +45,7 @@ from app.services.badge import (
     duplicate_badge,
     edit_badge,
     get_badge_analytics,
+    get_badge_by_id,
     get_public_badge_by_slug,
     increment_badge_creation_count,
     increment_badge_share_count,
@@ -313,6 +314,56 @@ async def get_analytics(
                 for tid, count in usage_rows
             ],
         ),
+    )
+
+
+@router.get(
+    "/{id}",
+    response_model=SuccessResponse[BadgeDetailResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get a single badge by ID",
+    description=(
+        "Returns the full detail of a single badge owned by the "
+        "authenticated organiser. Useful for populating the edit form. "
+        "Returns 404 for soft-deleted badges and 403 if the badge "
+        "belongs to another organiser."
+    ),
+    responses={
+        200: {"description": "Badge retrieved successfully."},
+        401: {"model": ErrorResponse, "description": "Unauthenticated."},
+        403: {"model": ErrorResponse, "description": "Not the badge owner."},
+        404: {"model": ErrorResponse, "description": "Badge not found."},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def get_single_badge(
+    request: Request,
+    session: DBSession,
+    current_user: CurrentUser,
+    id: UUID,
+) -> SuccessResponse[BadgeDetailResponse]:
+    """Return a single badge by ID for the authenticated organiser."""
+    try:
+        badge = await get_badge_by_id(
+            session=session,
+            organiser_id=current_user.id,
+            id=id,
+        )
+    except BadgeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Badge not found.",
+        ) from exc
+    except NotBadgeOwnerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this badge.",
+        ) from exc
+
+    return SuccessResponse(
+        message="Badge retrieved successfully.",
+        data=BadgeDetailResponse.model_validate(badge),
     )
 
 

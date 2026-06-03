@@ -507,6 +507,28 @@ async def delete_badge(
             )
 
 
+async def get_badge_by_id(
+    session: AsyncSession,
+    organiser_id: UUID,
+    id: UUID,
+) -> Badge:
+    result = await session.execute(
+        select(Badge)
+        .options(selectinload(Badge.hashtags))
+        .where(
+            Badge.id == id,
+            Badge.deleted_at.is_(None),
+        )
+    )
+    badge = result.scalars().first()
+    if badge is None:
+        raise BadgeNotFoundError
+    if badge.organiser_id != organiser_id:
+        raise NotBadgeOwnerError
+
+    return badge
+
+
 async def edit_badge(
     session: AsyncSession,
     organiser_id: UUID,
@@ -523,19 +545,19 @@ async def edit_badge(
             Badge.deleted_at.is_(None),
         )
     )
-    template = result.scalars().first()
-    if template is None:
+    badge = result.scalars().first()
+    if badge is None:
         raise BadgeNotFoundError
-    if template.organiser_id != organiser_id:
+    if badge.organiser_id != organiser_id:
         raise NotBadgeOwnerError
 
     for field, value in field_updates.items():
-        setattr(template, field, value)
+        setattr(badge, field, value)
 
     if update_hashtags:
-        template.hashtags.clear()
+        badge.hashtags.clear()
         for tag in new_hashtags or []:
-            template.hashtags.append(BadgeHashtag(hashtag=tag))
+            badge.hashtags.append(BadgeHashtag(hashtag=tag))
 
     await session.commit()
 
