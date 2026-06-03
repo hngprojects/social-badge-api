@@ -2300,6 +2300,27 @@ async def test_get_single_badge_success(
     assert data["data"]["title"] == badge.title
     assert data["data"]["is_published"] is False
 
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "canvas_data",
+        "default_caption",
+        "destination_link",
+        "thumbnail_url",
+        "logo_url",
+        "access_type",
+        "is_published",
+        "share_slug",
+        "published_at",
+        "hashtags",
+        "created_at",
+        "updated_at",
+        "total_shares",
+        "total_badges_created",
+    }
+    assert expected_keys == set(data["data"].keys())
+
 
 async def test_get_single_badge_unauthenticated(
     client: AsyncClient,
