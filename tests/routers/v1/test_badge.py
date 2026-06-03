@@ -2281,3 +2281,94 @@ async def test_analytics_total_draft_badges(
     assert data["total_organiser_badges"] == 5
     assert data["total_active_badges"] == 2
     assert data["total_draft_badges"] == 3
+
+
+async def test_get_single_badge_success(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    badge: Badge,
+) -> None:
+    response = await client.get(
+        f"/api/v1/badges/{badge.id}",
+        cookies=auth_cookies,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Badge retrieved successfully."
+    assert data["data"]["id"] == str(badge.id)
+    assert data["data"]["title"] == badge.title
+    assert data["data"]["is_published"] is False
+
+    expected_keys = {
+        "id",
+        "title",
+        "platform_template_id",
+        "canvas_data",
+        "default_caption",
+        "destination_link",
+        "thumbnail_url",
+        "logo_url",
+        "access_type",
+        "is_published",
+        "share_slug",
+        "published_at",
+        "hashtags",
+        "created_at",
+        "updated_at",
+        "total_shares",
+        "total_badges_created",
+    }
+    assert expected_keys == set(data["data"].keys())
+
+
+async def test_get_single_badge_unauthenticated(
+    client: AsyncClient,
+    badge: Badge,
+) -> None:
+    response = await client.get(
+        f"/api/v1/badges/{badge.id}",
+    )
+    assert response.status_code in (401, 403)
+
+
+async def test_get_single_badge_not_found(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+) -> None:
+    response = await client.get(
+        f"/api/v1/badges/{uuid.uuid4()}",
+        cookies=auth_cookies,
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_get_single_badge_not_owner(
+    client: AsyncClient,
+    other_auth_cookies: dict[str, str],
+    badge: Badge,
+) -> None:
+    response = await client.get(
+        f"/api/v1/badges/{badge.id}",
+        cookies=other_auth_cookies,
+    )
+    assert response.status_code == 403
+    assert response.json()["message"] == "You do not own this badge."
+
+
+async def test_get_single_badge_soft_deleted(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    db_session: AsyncSession,
+    badge: Badge,
+) -> None:
+    badge.deleted_at = datetime.now(UTC)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/badges/{badge.id}",
+        cookies=auth_cookies,
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
