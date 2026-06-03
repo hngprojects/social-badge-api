@@ -48,7 +48,6 @@ from app.services.badge import (
     get_public_badge_by_slug,
     increment_badge_creation_count,
     increment_badge_share_count,
-    increment_badge_share_count,
     list_badges,
     publish_badge,
     unpublish_badge,
