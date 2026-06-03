@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
 from app.core.security import hash_password, verify_password
+from app.models.badges import Badge
 from app.models.users import User
 from app.schemas.profile import ChangePasswordRequest
 from app.services.auth import logout_session
@@ -207,51 +208,80 @@ async def update_profile(
 
 async def delete_profile(
     session: AsyncSession,
+    redis: Redis,
     user_id: UUID,
+    access_token: str | None = None,
+    refresh_token: str | None = None,
 ) -> None:
-    """Delete a user's profile and associated assets.
+    """Delete a user's profile, associated Cloudinary assets, and invalidate sessions.
 
-    Fetches the user from the database to retrieve the profile photo URL,
-    then attempts to delete the profile photo from Cloudinary if it exists.
-    Even if Cloudinary deletion fails, the user profile is still deleted.
+    Fetches the user and their badges, deletes all Cloudinary assets
+    (profile photo and badge logos/thumbnails), invalidates the current
+    session, then removes the user record from the database.
 
     Args:
         session: The database session.
+        redis: Redis client for token blacklisting.
         user_id: The ID of the user to delete.
-
-    Raises:
-        CloudinaryUploadError: If Cloudinary deletion fails (but this is logged
-            and the user is still deleted).
+        access_token: The caller's raw access token cookie value.
+        refresh_token: The caller's raw refresh token cookie value.
     """
     # Fetch the user to get the profile photo URL
     stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
     user = result.scalars().first()
 
+    # Collect all Cloudinary public IDs to delete
+    public_ids_to_delete: list[str] = []
+
     if user and user.profile_photo_url:
         public_id = _extract_cloudinary_public_id(user.profile_photo_url)
         if public_id:
-            try:
-                await delete_asset(public_id)
-                logger.info(f"Deleted profile photo for user {user_id}: {public_id}")
-            except CloudinaryUploadError as exc:
-                logger.warning(
-                    "Failed to delete profile photo from Cloudinary for user %s: %s",
-                    user_id,
-                    exc,
-                )
-                # Continue with user deletion even if Cloudinary fails
+            public_ids_to_delete.append(public_id)
         else:
             logger.warning(
-                f"Could not extract public_id from URL: {user.profile_photo_url}"
+                "Could not extract public_id from URL: %s", user.profile_photo_url
             )
 
-    # Delete the user record from the database
+    # Fetch all badges belonging to this user and collect their Cloudinary assets
+    badge_stmt = select(Badge).where(Badge.organiser_id == user_id)
+    badge_result = await session.execute(badge_stmt)
+    badges = badge_result.scalars().all()
+
+    for badge in badges:
+        if badge.logo_public_id:
+            public_ids_to_delete.append(badge.logo_public_id)
+        if badge.thumbnail_url:
+            thumb_id = _extract_cloudinary_public_id(badge.thumbnail_url)
+            if thumb_id:
+                public_ids_to_delete.append(thumb_id)
+
+    # Best-effort delete all Cloudinary assets concurrently
+    if public_ids_to_delete:
+        results = await asyncio.gather(
+            *(delete_asset(pid) for pid in public_ids_to_delete),
+            return_exceptions=True,
+        )
+        for pid, res in zip(public_ids_to_delete, results, strict=False):
+            if isinstance(res, Exception):
+                logger.warning(
+                    "Failed to delete Cloudinary asset %s for user %s: %s",
+                    pid,
+                    user_id,
+                    res,
+                )
+            else:
+                logger.info("Deleted Cloudinary asset %s for user %s", pid, user_id)
+
+    # Invalidate the current session
+    await logout_session(session, redis, refresh_token, access_token)
+
+    # Delete the user record from the database (cascades to badges, tokens, etc.)
     delete_stmt = delete(User).where(User.id == user_id)
     await session.execute(delete_stmt)
     await session.commit()
 
-    logger.info(f"Deleted user profile: {user_id}")
+    logger.info("Deleted user profile: %s", user_id)
 
 
 async def change_password(
