@@ -961,6 +961,65 @@ async def test_increment_creation_no_auth_required(
     assert response.status_code == 200
 
 
+async def test_increment_creation_creates_notification_for_owner(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    published_template: Badge,
+) -> None:
+    """Calling the public increment-creation endpoint creates a notification
+    for the badge owner."""
+    from app.models.notifications import Notification, NotificationType
+
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(Notification).where(
+            Notification.user_id == published_template.organiser_id,
+            Notification.type == NotificationType.BADGE_CREATION,
+        )
+    )
+    notifs = list(result.scalars().all())
+    assert len(notifs) == 1
+    assert notifs[0].is_read is False
+    assert notifs[0].extra_data is not None
+    assert notifs[0].extra_data["badge_id"] == str(published_template.id)
+
+
+async def test_increment_creation_respects_owner_toggle(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    published_template: Badge,
+) -> None:
+    """If the badge owner has notify_badge_creation off, no notification
+    is created — but the counter still increments."""
+    from app.models.notifications import Notification
+    from app.services.notification import update_notification_preferences
+
+    await update_notification_preferences(
+        db_session,
+        published_template.organiser_id,
+        {"notify_badge_creation": False},
+    )
+
+    response = await client.post(
+        f"/api/v1/badges/public/{published_template.share_slug}/increment-creation"
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(Notification).where(
+            Notification.user_id == published_template.organiser_id,
+        )
+    )
+    assert result.scalars().first() is None
+
+    await db_session.refresh(published_template)
+    assert published_template.creation_count == 1
+
+
 @pytest.fixture
 async def seed_multiple_platform_templates(
     db_session: AsyncSession,

@@ -1,8 +1,10 @@
 from collections.abc import AsyncGenerator
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete as sa_delete
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -213,3 +215,156 @@ async def test_patch_no_body_returns_400(
     )
     assert response.status_code == 400
     assert response.json()["status"] == "error"
+
+
+async def test_list_notifications_unauthenticated(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/organiser/notifications/list")
+    assert response.status_code == 401
+
+
+async def test_list_notifications_empty(
+    client: AsyncClient,
+    notifications_user: dict[str, str],
+) -> None:
+    await client.post("/api/v1/auth/login", json=notifications_user)
+
+    response = await client.get("/api/v1/organiser/notifications/list")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["notifications"] == []
+    assert data["total"] == 0
+
+
+async def test_list_notifications_returns_newest_first(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    notifications_user: dict[str, str],
+) -> None:
+    from app.models.notifications import Notification, NotificationType
+
+    login_response = await client.post("/api/v1/auth/login", json=notifications_user)
+    assert login_response.status_code == 200
+
+    user_result = await db_session.execute(
+        select(User).where(User.email == notifications_user["email"])
+    )
+    user = user_result.scalar_one()
+
+    for i in range(3):
+        db_session.add(
+            Notification(
+                user_id=user.id,
+                type=NotificationType.BADGE_CREATION,
+                title=f"Notif {i}",
+                body=f"Body {i}",
+            )
+        )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/organiser/notifications/list")
+    assert response.status_code == 200
+    notifs = response.json()["data"]["notifications"]
+    assert len(notifs) == 3
+    assert notifs[0]["title"] == "Notif 2"
+    assert notifs[2]["title"] == "Notif 0"
+
+
+async def test_unread_count_unauthenticated(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/organiser/notifications/unread-count")
+    assert response.status_code == 401
+
+
+async def test_unread_count_empty(
+    client: AsyncClient,
+    notifications_user: dict[str, str],
+) -> None:
+    await client.post("/api/v1/auth/login", json=notifications_user)
+
+    response = await client.get("/api/v1/organiser/notifications/unread-count")
+    assert response.status_code == 200
+    assert response.json()["data"]["unread_count"] == 0
+
+
+async def test_mark_one_read_unauthenticated(client: AsyncClient) -> None:
+    response = await client.post(
+        f"/api/v1/organiser/notifications/{uuid.uuid4()}/mark-read"
+    )
+    assert response.status_code == 401
+
+
+async def test_mark_one_read_404_for_nonexistent(
+    client: AsyncClient,
+    notifications_user: dict[str, str],
+) -> None:
+    await client.post("/api/v1/auth/login", json=notifications_user)
+
+    response = await client.post(
+        f"/api/v1/organiser/notifications/{uuid.uuid4()}/mark-read"
+    )
+    assert response.status_code == 404
+
+
+async def test_mark_one_read_success(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    notifications_user: dict[str, str],
+) -> None:
+    from app.models.notifications import Notification, NotificationType
+
+    await client.post("/api/v1/auth/login", json=notifications_user)
+
+    user_result = await db_session.execute(
+        select(User).where(User.email == notifications_user["email"])
+    )
+    user = user_result.scalar_one()
+
+    n = Notification(
+        user_id=user.id,
+        type=NotificationType.BADGE_CREATION,
+        title="X",
+        body="y",
+    )
+    db_session.add(n)
+    await db_session.commit()
+    await db_session.refresh(n)
+
+    response = await client.post(f"/api/v1/organiser/notifications/{n.id}/mark-read")
+    assert response.status_code == 200
+
+    await db_session.refresh(n)
+    assert n.is_read is True
+
+
+async def test_mark_all_read_unauthenticated(client: AsyncClient) -> None:
+    response = await client.post("/api/v1/organiser/notifications/mark-all-read")
+    assert response.status_code == 401
+
+
+async def test_mark_all_read_returns_count(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    notifications_user: dict[str, str],
+) -> None:
+    from app.models.notifications import Notification, NotificationType
+
+    await client.post("/api/v1/auth/login", json=notifications_user)
+
+    user_result = await db_session.execute(
+        select(User).where(User.email == notifications_user["email"])
+    )
+    user = user_result.scalar_one()
+
+    for i in range(3):
+        db_session.add(
+            Notification(
+                user_id=user.id,
+                type=NotificationType.BADGE_CREATION,
+                title=f"N{i}",
+                body="x",
+            )
+        )
+    await db_session.commit()
+
+    response = await client.post("/api/v1/organiser/notifications/mark-all-read")
+    assert response.status_code == 200
+    assert response.json()["data"]["marked"] == 3
