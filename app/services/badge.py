@@ -282,34 +282,29 @@ async def increment_badge_creation_count(session: AsyncSession, slug: str) -> No
     Raises PublicBadgeNotFoundError when the slug does not resolve to a
     published, non-deleted badge so the router can return 404.
     """
-    badge_result = await session.execute(
-        select(Badge).where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+    result = await session.execute(
+        sa_update(Badge)
+        .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+        .values(creation_count=Badge.creation_count + 1)
+        .returning(Badge.id, Badge.organiser_id, Badge.title)
     )
-    badge = badge_result.scalar_one_or_none()
-    if badge is None:
+    row = result.first()
+
+    if row is None:
         raise PublicBadgeNotFoundError
 
-    result = cast(
-        CursorResult[Any],
-        await session.execute(
-            sa_update(Badge)
-            .where(Badge.id == badge.id)
-            .values(creation_count=Badge.creation_count + 1)
-        ),
-    )
+    badge_id, organiser_id, badge_title = row
 
     await create_notification(
         session=session,
-        user_id=badge.organiser_id,
+        user_id=organiser_id,
         notif_type=NotificationType.BADGE_CREATION,
         title="New badge created",
-        body=f"A new participant just created a badge from '{badge.title}'.",
-        extra_data={"badge_id": str(badge.id), "share_slug": slug},
+        body=f"A new participant just created a badge from '{badge_title}'.",
+        extra_data={"badge_id": str(badge_id), "share_slug": slug},
     )
 
     await session.commit()
-    if result.rowcount == 0:
-        raise PublicBadgeNotFoundError
 
 
 async def list_platform_templates(

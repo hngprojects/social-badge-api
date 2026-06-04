@@ -56,7 +56,7 @@ class UserNotificationPreference(Base):
     user: Mapped["User"] = relationship(back_populates="notification_preferences")
 
 
-class NotificationType(str, enum.Enum):
+class NotificationType(enum.StrEnum):
     BADGE_CREATION = "badge_creation"
     DAILY_DIGEST = "daily_digest"
     WEEKLY_REPORT = "weekly_report"
@@ -66,7 +66,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid7, index=True, nullable=False
+        primary_key=True, default=uuid7, nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -81,7 +81,7 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(String(2048), nullable=False)
     is_read: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean, default=False, nullable=False, index=True, server_default="false"
     )
     extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

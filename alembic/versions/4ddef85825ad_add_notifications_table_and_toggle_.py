@@ -26,14 +26,14 @@ def upgrade() -> None:
     sa.Column('type', sa.Enum('BADGE_CREATION', 'DAILY_DIGEST', 'WEEKLY_REPORT', name='notification_type'), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=False),
     sa.Column('body', sa.String(length=2048), nullable=False),
-    sa.Column('is_read', sa.Boolean(), nullable=False),
+    sa.Column('is_read', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('extra_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_notifications_created_at'), 'notifications', ['created_at'], unique=False)
-    op.create_index(op.f('ix_notifications_id'), 'notifications', ['id'], unique=False)
+
     op.create_index(op.f('ix_notifications_is_read'), 'notifications', ['is_read'], unique=False)
     op.create_index(op.f('ix_notifications_type'), 'notifications', ['type'], unique=False)
     op.create_index('ix_notifications_user_created', 'notifications', ['user_id', 'created_at'], unique=False)
@@ -55,7 +55,8 @@ def downgrade() -> None:
     op.drop_index('ix_notifications_user_created', table_name='notifications')
     op.drop_index(op.f('ix_notifications_type'), table_name='notifications')
     op.drop_index(op.f('ix_notifications_is_read'), table_name='notifications')
-    op.drop_index(op.f('ix_notifications_id'), table_name='notifications')
+
     op.drop_index(op.f('ix_notifications_created_at'), table_name='notifications')
     op.drop_table('notifications')
+    op.execute("DROP TYPE IF EXISTS notification_type")
     # ### end Alembic commands ###

@@ -153,7 +153,7 @@ async def list_notifications(
     result = await session.execute(
         select(Notification)
         .where(where_clause)
-        .order_by(Notification.created_at.desc())
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
         .offset((page - 1) * limit)
         .limit(limit)
     )
