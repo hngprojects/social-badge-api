@@ -2,7 +2,15 @@
 
 import logging
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
 from app.core.config import settings
 from app.core.exceptions import CloudinaryUploadError, InvalidCredentialsError
@@ -211,20 +219,41 @@ async def update_user_profile(
 @limiter.limit("5/minute")
 async def delete_user_profile(
     request: Request,
+    response: Response,
     session: DBSession,
+    redis: RedisClient,
     current_user: CurrentUser,
 ) -> SuccessResponse[DeleteProfileResponse]:
     """Delete the authenticated user's profile.
 
     Permanently removes the user account and all associated data,
-    including the profile photo from Cloudinary if one exists.
-    This action is irreversible.
+    including all badge assets and the profile photo from Cloudinary.
+    Invalidates all sessions. This action is irreversible.
     """
     user_id = current_user.id
+    refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
+    access_token = request.cookies.get(settings.ACCESS_COOKIE)
 
     await delete_profile(
         session=session,
+        redis=redis,
         user_id=user_id,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+    # Clear auth cookies
+    response.delete_cookie(
+        key=settings.REFRESH_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        key=settings.ACCESS_COOKIE,
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
     )
 
     logger.info("Deleted profile for user %s", user_id)
