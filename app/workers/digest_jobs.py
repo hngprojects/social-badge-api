@@ -16,18 +16,23 @@ from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
 
+_session_factory: async_sessionmaker | None = None
+
 
 def _get_session_factory() -> async_sessionmaker:
-    """Build an isolated session factory for the worker process.
+    """Lazily build (and cache) a session factory for the worker process.
 
-    The worker runs in its own process, so it can't reuse the FastAPI
-    request-scoped session. We create the engine here on first use.
+    Cached at module level so the engine is created once per worker
+    process, not once per cron run.
     """
-    engine = create_async_engine(
-        str(settings.DATABASE_URL),
-        pool_pre_ping=True,
-    )
-    return async_sessionmaker(engine, expire_on_commit=False)
+    global _session_factory
+    if _session_factory is None:
+        engine = create_async_engine(
+            str(settings.DATABASE_URL),
+            pool_pre_ping=True,
+        )
+        _session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    return _session_factory
 
 
 async def send_daily_digests(ctx: dict) -> dict:
@@ -65,16 +70,23 @@ async def send_daily_digests(ctx: dict) -> dict:
         defaulted_in = all_owner_ids - users_with_prefs
         target_users = opted_in_user_ids | defaulted_in
 
-        for user_id in target_users:
-            badge_creations_result = await session.execute(
-                select(func.count(Notification.id)).where(
-                    Notification.user_id == user_id,
-                    Notification.type == NotificationType.BADGE_CREATION,
-                    Notification.created_at >= day_start,
-                    Notification.created_at < day_end,
-                )
+        counts_result = await session.execute(
+            select(
+                Notification.user_id,
+                func.count(Notification.id).label("count"),
             )
-            badges_created_today = int(badge_creations_result.scalar_one())
+            .where(
+                Notification.type == NotificationType.BADGE_CREATION,
+                Notification.created_at >= day_start,
+                Notification.created_at < day_end,
+                Notification.user_id.in_(target_users),
+            )
+            .group_by(Notification.user_id)
+        )
+        counts_by_user = {row[0]: int(row[1]) for row in counts_result.all()}
+
+        for user_id in target_users:
+            badges_created_today = counts_by_user.get(user_id, 0)
 
             if badges_created_today == 0:
                 skipped += 1
@@ -87,7 +99,7 @@ async def send_daily_digests(ctx: dict) -> dict:
                 f"badges."
             )
 
-            await create_notification(
+            notif = await create_notification(
                 session=session,
                 user_id=user_id,
                 notif_type=NotificationType.DAILY_DIGEST,
@@ -99,8 +111,11 @@ async def send_daily_digests(ctx: dict) -> dict:
                     "period_end": day_end.isoformat(),
                 },
             )
-            await session.commit()
-            sent += 1
+            if notif is not None:
+                await session.commit()
+                sent += 1
+            else:
+                skipped += 1
 
     logger.info(
         "daily_digest finished: sent=%d skipped=%d total_targets=%d",
@@ -156,20 +171,28 @@ async def send_weekly_reports(ctx: dict) -> dict:
         defaulted_in = all_owner_ids - users_with_prefs
         target_users = opted_in_user_ids | defaulted_in
 
-        for user_id in target_users:
-            total_result = await session.execute(
-                select(func.count(Notification.id)).where(
-                    Notification.user_id == user_id,
-                    Notification.type == NotificationType.BADGE_CREATION,
-                    Notification.created_at >= week_start,
-                    Notification.created_at < week_end,
-                )
+        counts_result = await session.execute(
+            select(
+                Notification.user_id,
+                func.count(Notification.id).label("count"),
             )
-            week_total = int(total_result.scalar_one())
+            .where(
+                Notification.type == NotificationType.BADGE_CREATION,
+                Notification.created_at >= week_start,
+                Notification.created_at < week_end,
+                Notification.user_id.in_(target_users),
+            )
+            .group_by(Notification.user_id)
+        )
+        counts_by_user = {row[0]: int(row[1]) for row in counts_result.all()}
+
+        for user_id in target_users:
+            week_total = counts_by_user.get(user_id, 0)
 
             if week_total == 0:
                 skipped += 1
                 continue
+
             per_day_result = await session.execute(
                 select(
                     func.extract("dow", Notification.created_at).label("dow"),
@@ -182,7 +205,7 @@ async def send_weekly_reports(ctx: dict) -> dict:
                     Notification.created_at < week_end,
                 )
                 .group_by("dow")
-                .order_by(func.count(Notification.id).desc())
+                .order_by(func.count(Notification.id).desc(), "dow")
             )
             per_day = per_day_result.all()
             top_dow = int(per_day[0][0])
@@ -195,7 +218,7 @@ async def send_weekly_reports(ctx: dict) -> dict:
                 f"Highest-traffic day: {top_day_name}."
             )
 
-            await create_notification(
+            notif = await create_notification(
                 session=session,
                 user_id=user_id,
                 notif_type=NotificationType.WEEKLY_REPORT,
@@ -211,8 +234,11 @@ async def send_weekly_reports(ctx: dict) -> dict:
                     "period_end": week_end.isoformat(),
                 },
             )
-            await session.commit()
-            sent += 1
+            if notif is not None:
+                await session.commit()
+                sent += 1
+            else:
+                skipped += 1
 
     logger.info(
         "weekly_report finished: sent=%d skipped=%d total_targets=%d",
