@@ -563,7 +563,7 @@ async def test_upload_profile_photo_jpeg(
     image_data = b"\xff\xd8\xff\xe0" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.jpg", image_data, "image/jpeg")},
     )
 
@@ -591,7 +591,7 @@ async def test_upload_profile_photo_gif(
     image_data = b"GIF89a" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.gif", image_data, "image/gif")},
     )
 
@@ -609,7 +609,7 @@ async def test_upload_profile_photo_unsupported_format(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
     )
 
@@ -632,7 +632,7 @@ async def test_upload_profile_photo_file_too_large(
     large_image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024 * 1024 + 1)
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("large.png", large_image_data, "image/png")},
     )
 
@@ -661,7 +661,7 @@ async def test_upload_profile_photo_deletes_old_photo(
 
     with patch("app.services.profile.delete_asset", new_callable=AsyncMock) as mock_del:
         response = await client.put(
-            "/api/v1/profilephoto",
+            "/api/v1/profile/photo",
             files={"file": ("test.png", image_data, "image/png")},
         )
 
@@ -676,7 +676,7 @@ async def test_upload_profile_photo_unauthenticated(client: AsyncClient) -> None
     image_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
 
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.png", image_data, "image/png")},
     )
 
@@ -703,14 +703,14 @@ async def test_upload_profile_photo_rate_limit(
     # Make 10 requests (at the limit)
     for _ in range(10):
         response = await client.put(
-            "/api/v1/profilephoto",
+            "/api/v1/profile/photo",
             files={"file": ("test.png", image_data, "image/png")},
         )
         assert response.status_code == 200
 
     # 11th request should be rate limited
     response = await client.put(
-        "/api/v1/profilephoto",
+        "/api/v1/profile/photo",
         files={"file": ("test.png", image_data, "image/png")},
     )
     assert response.status_code == 429
@@ -730,7 +730,7 @@ async def test_remove_profile_photo_success(
     """Removing a photo clears profile_photo_url and calls Cloudinary delete."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    response = await client.delete("/api/v1/profilephoto")
+    response = await client.delete("/api/v1/profile/photo")
 
     assert response.status_code == 200
     data = response.json()
@@ -764,7 +764,7 @@ async def test_remove_profile_photo_no_photo_is_noop(
         json={"email": "nophoto-remove@example.com", "password": "StrongPassword1!"},
     )
 
-    response = await client.delete("/api/v1/profilephoto")
+    response = await client.delete("/api/v1/profile/photo")
 
     assert response.status_code == 200
     assert response.json()["data"]["profile_photo_url"] is None
@@ -773,7 +773,7 @@ async def test_remove_profile_photo_no_photo_is_noop(
 
 async def test_remove_profile_photo_unauthenticated(client: AsyncClient) -> None:
     """Unauthenticated request returns 401."""
-    response = await client.delete("/api/v1/profilephoto")
+    response = await client.delete("/api/v1/profile/photo")
     assert response.status_code == 401
 
 
@@ -788,7 +788,7 @@ async def test_remove_profile_photo_cloudinary_failure_still_clears_url(
 
     await client.post("/api/v1/auth/login", json=profile_user)
 
-    response = await client.delete("/api/v1/profilephoto")
+    response = await client.delete("/api/v1/profile/photo")
 
     assert response.status_code == 200
     assert response.json()["data"]["profile_photo_url"] is None
@@ -808,8 +808,8 @@ async def test_remove_profile_photo_rate_limit(
     await client.post("/api/v1/auth/login", json=profile_user)
 
     for _ in range(10):
-        response = await client.delete("/api/v1/profilephoto")
+        response = await client.delete("/api/v1/profile/photo")
         assert response.status_code == 200
 
-    response = await client.delete("/api/v1/profilephoto")
+    response = await client.delete("/api/v1/profile/photo")
     assert response.status_code == 429
