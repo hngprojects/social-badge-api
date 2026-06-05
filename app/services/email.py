@@ -1,12 +1,10 @@
-import asyncio
 import html
 import logging
 from datetime import datetime
 from email.message import EmailMessage
+from typing import Protocol
 
 import aiosmtplib
-import resend
-import resend.exceptions
 
 from app.core.config import settings
 from app.core.exceptions import EmailDeliveryError
@@ -14,8 +12,52 @@ from app.services import email_templates
 
 logger = logging.getLogger(__name__)
 
-resend.api_key = settings.RESEND_API_KEY
 
+class EmailProvider(Protocol):
+    async def send(
+        self,
+        *,
+        to: str | list[str],
+        subject: str,
+        html_content: str,
+        reply_to: str | None = None,
+    ) -> None:
+        ...
+
+
+class SMTPEmailProvider:
+    async def send(
+        self,
+        *,
+        to: str | list[str],
+        subject: str,
+        html_content: str,
+        reply_to: str | None = None,
+    ) -> None:
+        message = EmailMessage()
+        message["From"] = settings.SMTP_FROM_EMAIL
+        message["To"] = to if isinstance(to, str) else ", ".join(to)
+        message["Subject"] = subject
+        if reply_to:
+            message["Reply-To"] = reply_to
+        message.set_content(html_content, subtype="html")
+
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                username=settings.SMTP_USER,
+                password=settings.SMTP_PASSWORD,
+                start_tls=True,
+            )
+            logger.info("Email successfully delivered to %s", to)
+        except Exception as exc:
+            logger.exception("Email delivery failed for %s", to)
+            raise EmailDeliveryError(f"Email delivery failed for {to}") from exc
+
+
+email_provider: EmailProvider = SMTPEmailProvider()
 
 def _build_verification_html(token: str) -> str:
     action_url = f"{settings.FRONTEND_URL}/verify?token={token}"
@@ -98,156 +140,50 @@ def _build_security_alert_html(detected_at: datetime) -> str:
     )
 
 
-async def _send_smtp_email(
-    *,
-    to: str | list[str],
-    subject: str,
-    html_content: str,
-    reply_to: str | None = None,
-) -> None:
-    message = EmailMessage()
-    message["From"] = settings.SMTP_FROM_EMAIL
-    message["To"] = to if isinstance(to, str) else ", ".join(to)
-    message["Subject"] = subject
-    if reply_to:
-        message["Reply-To"] = reply_to
-    message.set_content(html_content, subtype="html")
-
-    try:
-        await aiosmtplib.send(
-            message,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASSWORD,
-            start_tls=True,
-        )
-        logger.info("Email successfully delivered via SMTP fallback to %s", to)
-    except Exception as exc:
-        logger.exception("SMTP fallback failed for %s", to)
-        raise EmailDeliveryError(f"SMTP fallback failed for {to}") from exc
-
 
 async def send_verification_email(to: str, token: str) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.VERIFICATION_SUBJECT,
-        "html": _build_verification_html(token),
-    }
-
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for verification email to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.VERIFICATION_SUBJECT,
-            html_content=params["html"],
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending verification email to %s", to)
-        raise EmailDeliveryError(f"Failed to send verification email to {to}") from exc
+    html_content = _build_verification_html(token)
+    await email_provider.send(
+        to=to,
+        subject=settings.VERIFICATION_SUBJECT,
+        html_content=html_content,
+    )
 
 
 async def send_account_lock_email(to: str) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.ACCOUNT_LOCK_SUBJECT,
-        "html": _build_account_lock_html(),
-    }
-
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for account lock email to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.ACCOUNT_LOCK_SUBJECT,
-            html_content=params["html"],
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending account lock email to %s", to)
-        raise EmailDeliveryError(f"Failed to send account lock email to {to}") from exc
+    html_content = _build_account_lock_html()
+    await email_provider.send(
+        to=to,
+        subject=settings.ACCOUNT_LOCK_SUBJECT,
+        html_content=html_content,
+    )
 
 
 async def send_password_reset_email(to: str, token: str) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.PASSWORD_RESET_SUBJECT,
-        "html": _build_password_reset_html(token),
-    }
-
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for password reset email to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.PASSWORD_RESET_SUBJECT,
-            html_content=params["html"],
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending password reset email to %s", to)
-        raise EmailDeliveryError(
-            f"Failed to send password reset email to {to}"
-        ) from exc
+    html_content = _build_password_reset_html(token)
+    await email_provider.send(
+        to=to,
+        subject=settings.PASSWORD_RESET_SUBJECT,
+        html_content=html_content,
+    )
 
 
 async def send_onboarding_email(to: str) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.ONBOARDING_SUBJECT,
-        "html": _build_onboarding_html(),
-    }
-
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for onboarding email to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.ONBOARDING_SUBJECT,
-            html_content=params["html"],
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending onboarding email to %s", to)
-        raise EmailDeliveryError(f"Failed to send onboarding email to {to}") from exc
+    html_content = _build_onboarding_html()
+    await email_provider.send(
+        to=to,
+        subject=settings.ONBOARDING_SUBJECT,
+        html_content=html_content,
+    )
 
 
 async def send_security_alert_email(to: str, detected_at: datetime) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.SECURITY_ALERT_SUBJECT,
-        "html": _build_security_alert_html(detected_at),
-    }
-
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for security alert to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.SECURITY_ALERT_SUBJECT,
-            html_content=params["html"],
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending security alert to %s", to)
-        raise EmailDeliveryError(f"Failed to send security alert to {to}") from exc
+    html_content = _build_security_alert_html(detected_at)
+    await email_provider.send(
+        to=to,
+        subject=settings.SECURITY_ALERT_SUBJECT,
+        html_content=html_content,
+    )
 
 
 async def send_contact_notification(
@@ -259,40 +195,20 @@ async def send_contact_notification(
     subject: str,
     message: str,
 ) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [settings.CONTACT_RECIPIENT_EMAIL],
-        "reply_to": email,
-        "subject": settings.CONTACT_NOTIFICATION_SUBJECT,
-        "html": _build_notification_html(
-            reference_id=reference_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            subject=subject,
-            message=message,
-        ),
-    }
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for contact notification (ref %s), trying SMTP fallback",
-            reference_id,
-        )
-        await _send_smtp_email(
-            to=settings.CONTACT_RECIPIENT_EMAIL,
-            subject=settings.CONTACT_NOTIFICATION_SUBJECT,
-            html_content=params["html"],
-            reply_to=email,
-        )
-    except Exception as exc:
-        logger.exception(
-            "Unexpected error sending contact notification for ref %s", reference_id
-        )
-        raise EmailDeliveryError(
-            f"Failed to send contact notification for {reference_id}"
-        ) from exc
+    html_content = _build_notification_html(
+        reference_id=reference_id,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        subject=subject,
+        message=message,
+    )
+    await email_provider.send(
+        to=settings.CONTACT_RECIPIENT_EMAIL,
+        subject=settings.CONTACT_NOTIFICATION_SUBJECT,
+        html_content=html_content,
+        reply_to=email,
+    )
 
 
 async def send_contact_confirmation(
@@ -301,37 +217,16 @@ async def send_contact_confirmation(
     first_name: str,
     reference_id: str,
 ) -> None:
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to_email],
-        "subject": settings.CONTACT_CONFIRMATION_SUBJECT,
-        "html": _build_confirmation_html(
-            first_name=first_name,
-            reference_id=reference_id,
-        ),
-    }
+    html_content = _build_confirmation_html(
+        first_name=first_name,
+        reference_id=reference_id,
+    )
     try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for contact confirmation to %s (ref %s), "
-            "trying SMTP fallback",
-            to_email,
-            reference_id,
+        await email_provider.send(
+            to=to_email,
+            subject=settings.CONTACT_CONFIRMATION_SUBJECT,
+            html_content=html_content,
         )
-        try:
-            await _send_smtp_email(
-                to=to_email,
-                subject=settings.CONTACT_CONFIRMATION_SUBJECT,
-                html_content=params["html"],
-            )
-        except Exception:
-            logger.exception(
-                "Final failure: SMTP fallback also failed for contact "
-                "confirmation to %s (ref %s)",
-                to_email,
-                reference_id,
-            )
     except Exception:
         logger.exception(
             "Unexpected error sending contact confirmation to %s (ref %s)",
@@ -345,23 +240,8 @@ async def send_newsletter_welcome_email(*, to: str, unsubscribe_token: str) -> N
         "newsletter_welcome",
         unsubscribe_token=unsubscribe_token,
     )
-    params: resend.Emails.SendParams = {
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to],
-        "subject": settings.NEWSLETTER_WELCOME_SUBJECT,
-        "html": html_content,
-    }
-    try:
-        await asyncio.to_thread(resend.Emails.send, params)
-    except resend.exceptions.ResendError:
-        logger.warning(
-            "Resend failed for newsletter welcome to %s, trying SMTP fallback", to
-        )
-        await _send_smtp_email(
-            to=to,
-            subject=settings.NEWSLETTER_WELCOME_SUBJECT,
-            html_content=html_content,
-        )
-    except Exception as exc:
-        logger.exception("Unexpected error sending newsletter welcome to %s", to)
-        raise EmailDeliveryError(f"Failed to send newsletter welcome to {to}") from exc
+    await email_provider.send(
+        to=to,
+        subject=settings.NEWSLETTER_WELCOME_SUBJECT,
+        html_content=html_content,
+    )

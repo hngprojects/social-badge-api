@@ -42,8 +42,6 @@ class Settings(BaseSettings):
     LOCKOUT_WINDOW: int = 900  # 15 minutes in seconds
     FAILED_LOGIN_PREFIX: str = "failed_login:"
 
-    RESEND_API_KEY: str = "re_dummy_api_key"
-    RESEND_FROM_EMAIL: str = "noreply@yourdomain.com"
     CONTACT_RECIPIENT_EMAIL: str = ""
     CONTACT_NOTIFICATION_SUBJECT: str = "New Contact Form Submission — Flare Tag"
     CONTACT_CONFIRMATION_SUBJECT: str = "We received your message — Flare Tag"
@@ -124,14 +122,6 @@ class Settings(BaseSettings):
             return self
 
         checks = {
-            "RESEND_API_KEY": (
-                self.RESEND_API_KEY,
-                {"", "re_dummy_api_key", "re_your_api_key_here"},
-            ),
-            "RESEND_FROM_EMAIL": (
-                self.RESEND_FROM_EMAIL,
-                {"", "noreply@yourdomain.com"},
-            ),
             "GOOGLE_CLIENT_ID": (
                 self.GOOGLE_CLIENT_ID,
                 {"", "your_google_client_id_here"},
@@ -149,8 +139,12 @@ class Settings(BaseSettings):
             if value.strip() in banned:
                 raise ValueError(f"{field} must be set in production")
 
-        if not self.SMTP_USER.strip() or not self.SMTP_PASSWORD.strip():
-            raise ValueError("SMTP fallback credentials must be set in production")
+        if (
+            not self.SMTP_USER.strip()
+            or not self.SMTP_PASSWORD.strip()
+            or not self.SMTP_FROM_EMAIL.strip()
+        ):
+            raise ValueError("SMTP credentials must be set in production")
 
         return self
 
