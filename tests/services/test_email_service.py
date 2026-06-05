@@ -87,7 +87,7 @@ async def test_security_alert_email_raises_on_unexpected_exception(
     mock_send.side_effect = RuntimeError("Unexpected error")
     detected_at = datetime(2026, 5, 19, 12, 0, 0, tzinfo=UTC)
 
-    with pytest.raises(Exception): # Can be generic Exception or EmailDeliveryError based on how it's handled. Currently in the code we don't catch unexpected ones in the provider if the provider doesn't wrap them, wait: we wrap it in EmailDeliveryError if we use SMTPEmailProvider, but the test patches email_provider.send! So if it raises RuntimeError, the function send_security_alert_email does NOT catch it. It will raise RuntimeError.
+    with pytest.raises(RuntimeError, match="Unexpected error"):
         await send_security_alert_email("user@example.com", detected_at)
 
 

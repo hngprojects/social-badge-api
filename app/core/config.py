@@ -141,10 +141,13 @@ class Settings(BaseSettings):
 
         if (
             not self.SMTP_USER.strip()
+            or not self.SMTP_PORT
             or not self.SMTP_PASSWORD.strip()
             or not self.SMTP_FROM_EMAIL.strip()
         ):
-            raise ValueError("SMTP credentials must be set in production")
+            raise ValueError(
+                "SMTP host, port, credentials, and from email must be set in production"
+            )
 
         return self
 
