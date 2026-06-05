@@ -21,10 +21,12 @@ from app.core.exceptions import (
 )
 from app.core.slug import generate_share_slug
 from app.models import Badge, BadgeHashtag, PlatformTemplate
+from app.models.notifications import NotificationType
 from app.services.cloudinary import (
     delete_logo,
     upload_logo,
 )
+from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
 
@@ -274,20 +276,35 @@ async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
 async def increment_badge_creation_count(session: AsyncSession, slug: str) -> None:
     """Atomically increment creation_count for a published badge.
 
+    Also creates a 'badge_creation' notification for the badge owner if
+    their toggle is on.
+
     Raises PublicBadgeNotFoundError when the slug does not resolve to a
     published, non-deleted badge so the router can return 404.
     """
-    result = cast(
-        CursorResult[Any],
-        await session.execute(
-            sa_update(Badge)
-            .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
-            .values(creation_count=Badge.creation_count + 1)
-        ),
+    result = await session.execute(
+        sa_update(Badge)
+        .where(Badge.share_slug == slug, *_PUBLIC_WHERE)
+        .values(creation_count=Badge.creation_count + 1)
+        .returning(Badge.id, Badge.organiser_id, Badge.title)
     )
-    await session.commit()
-    if result.rowcount == 0:
+    row = result.first()
+
+    if row is None:
         raise PublicBadgeNotFoundError
+
+    badge_id, organiser_id, badge_title = row
+
+    await create_notification(
+        session=session,
+        user_id=organiser_id,
+        notif_type=NotificationType.BADGE_CREATION,
+        title="New badge created",
+        body=f"A new participant just created a badge from '{badge_title}'.",
+        extra_data={"badge_id": str(badge_id), "share_slug": slug},
+    )
+
+    await session.commit()
 
 
 async def list_platform_templates(
