@@ -1,8 +1,11 @@
+import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, func
+from sqlalchemy import Enum as SAEnum, Index, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from uuid_utils import uuid7 as _uuid7
 
@@ -33,6 +36,15 @@ class UserNotificationPreference(Base):
     email_new_signin: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+    notify_badge_creation: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
+    notify_daily_digest: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
+    notify_weekly_report: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -42,3 +54,46 @@ class UserNotificationPreference(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="notification_preferences")
+
+
+class NotificationType(enum.StrEnum):
+    BADGE_CREATION = "badge_creation"
+    DAILY_DIGEST = "daily_digest"
+    WEEKLY_REPORT = "weekly_report"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid7, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    type: Mapped[NotificationType] = mapped_column(
+        SAEnum(NotificationType, name="notification_type"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(String(2048), nullable=False)
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True, server_default="false"
+    )
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="notifications")
+
+    __table_args__ = (
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        Index("ix_notifications_user_unread", "user_id", "is_read"),
+    )

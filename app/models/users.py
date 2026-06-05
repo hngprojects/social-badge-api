@@ -11,7 +11,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
     from app.models.auth import AuthProvider, RefreshToken
     from app.models.badges import Badge
-    from app.models.notifications import UserNotificationPreference
+    from app.models.notifications import Notification, UserNotificationPreference
     from app.models.roles import Role, UserRole
 
 
@@ -80,4 +80,10 @@ class User(Base):
             uselist=False,
             cascade="all, delete-orphan",
         )
+    )
+
+    notifications: Mapped[list["Notification"]] = relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
