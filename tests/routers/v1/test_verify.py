@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 
@@ -12,7 +14,9 @@ def verification_token() -> str:
 
 
 @pytest.mark.asyncio
+@patch("app.routers.v1.auth.send_onboarding_email", new_callable=AsyncMock)
 async def test_verify_email_success(
+    _mock_onboarding: AsyncMock,
     client: AsyncClient,
     db_session: DBSession,
     fake_redis: RedisClient,
@@ -94,7 +98,9 @@ async def test_verify_email_already_verified(
 
 
 @pytest.mark.asyncio
+@patch("app.routers.v1.auth.send_onboarding_email", new_callable=AsyncMock)
 async def test_verify_email_success_sets_cookies(
+    _mock_onboarding: AsyncMock,
     client: AsyncClient,
     db_session: DBSession,
     fake_redis: RedisClient,

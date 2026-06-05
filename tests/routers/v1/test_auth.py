@@ -905,7 +905,9 @@ async def test_login_stores_refresh_token_family_id_and_metadata(
 # ---------------------------------------------------------------------------
 
 
+@patch("app.routers.v1.auth.send_onboarding_email", new_callable=AsyncMock)
 async def test_verify_email_stores_refresh_token_metadata(
+    _mock_onboarding: AsyncMock,
     client: AsyncClient,
     db_session: AsyncSession,
     fake_redis: FakeAsyncRedis,
