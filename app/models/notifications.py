@@ -57,7 +57,7 @@ class UserNotificationPreference(Base):
 
 
 class NotificationType(enum.StrEnum):
-    BADGE_CREATION = "badge_creation"
+    BADGE_CREATION = "badge_alert"
     DAILY_DIGEST = "daily_digest"
     WEEKLY_REPORT = "weekly_report"
 
