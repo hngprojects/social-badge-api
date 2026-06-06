@@ -3,7 +3,7 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from app.schemas.contact import ContactRequest, ContactTopic
+from app.schemas.contact import ContactRequest, ContactSubjectOption, ContactTopic
 from app.services.email import (
     send_contact_confirmation,
     send_contact_notification,
@@ -21,6 +21,16 @@ _TOPIC_LABELS: dict[ContactTopic, str] = {
 }
 
 _REFERENCE_ALPHABET = string.ascii_uppercase + string.digits
+
+_CACHED_SUBJECTS: list[ContactSubjectOption] = [
+    ContactSubjectOption(value=topic.value, label=label)
+    for topic, label in _TOPIC_LABELS.items()
+]
+
+
+def get_contact_subjects() -> list[ContactSubjectOption]:
+    """Return all available contact form subject options."""
+    return _CACHED_SUBJECTS
 
 
 def _generate_reference_id() -> str:

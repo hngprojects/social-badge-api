@@ -92,3 +92,16 @@ class ContactResponse(BaseModel):
         description="The email address we will reply to.",
         json_schema_extra={"example": "alex@yourcompany.com"},
     )
+
+
+class ContactSubjectOption(BaseModel):
+    value: str = Field(
+        ...,
+        description="The enum value to submit in the contact form payload.",
+        json_schema_extra={"example": "general"},
+    )
+    label: str = Field(
+        ...,
+        description="Human-readable label for the dropdown option.",
+        json_schema_extra={"example": "General Question"},
+    )

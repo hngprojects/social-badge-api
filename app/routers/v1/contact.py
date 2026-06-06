@@ -5,11 +5,56 @@ from fastapi import APIRouter, HTTPException, Request, status
 from app.core.config import settings
 from app.core.exceptions import EmailDeliveryError
 from app.core.rate_limit import limiter
-from app.schemas.contact import ContactRequest, ContactResponse
+from app.schemas.contact import ContactRequest, ContactResponse, ContactSubjectOption
 from app.schemas.response import ErrorResponse, SuccessResponse
-from app.services.contact import submit_contact_form
+from app.services.contact import get_contact_subjects, submit_contact_form
 
 router = APIRouter()
+
+
+@router.get(
+    "/subjects",
+    response_model=SuccessResponse[list[ContactSubjectOption]],
+    status_code=status.HTTP_200_OK,
+    summary="List contact form subject options",
+    description=(
+        "Returns all available subject categories for the contact form dropdown. "
+        "Each entry contains the enum value (to submit) and a human-readable label."
+    ),
+    responses={
+        200: {
+            "description": "Subject options retrieved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "Contact subject options retrieved successfully",
+                        "data": [
+                            {"value": "general", "label": "General Question"},
+                            {"value": "partnership", "label": "Partnership Idea"},
+                            {"value": "bug_report", "label": "Bug Report"},
+                            {"value": "feedback", "label": "Feedback"},
+                            {"value": "billing", "label": "Billing"},
+                            {"value": "other", "label": "Other"},
+                        ],
+                    }
+                }
+            },
+        },
+        429: {
+            "model": ErrorResponse,
+            "description": "Rate limit exceeded.",
+        },
+    },
+)
+@limiter.limit("30/minute")
+async def list_contact_subjects(
+    request: Request,
+) -> SuccessResponse[list[ContactSubjectOption]]:
+    return SuccessResponse(
+        message="Contact subject options retrieved successfully",
+        data=get_contact_subjects(),
+    )
 
 
 @router.post(
