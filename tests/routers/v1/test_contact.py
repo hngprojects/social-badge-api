@@ -114,9 +114,9 @@ class TestContactRequestSchema:
                 last_name=None,
                 email="alex@example.com",
                 subject=ContactTopic.GENERAL,
-                message="x" * 5001,
+                message="x" * 251,
             )
-        assert "5000 characters" in str(exc_info.value)
+        assert "250 characters" in str(exc_info.value)
 
     @pytest.mark.parametrize(
         "topic",
