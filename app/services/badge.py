@@ -299,7 +299,7 @@ async def increment_badge_creation_count(session: AsyncSession, slug: str) -> No
         session=session,
         user_id=organiser_id,
         notif_type=NotificationType.BADGE_CREATION,
-        title="New badge created",
+        title="A new participant has just created a new badge",
         body=f"A new participant just created a badge from '{badge_title}'.",
         extra_data={"badge_id": str(badge_id), "share_slug": slug},
     )
