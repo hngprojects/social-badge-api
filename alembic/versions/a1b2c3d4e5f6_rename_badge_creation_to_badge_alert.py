@@ -22,16 +22,16 @@ def upgrade() -> None:
     op.execute("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'badge_alert'")
     # Commit the enum change (ALTER TYPE ADD VALUE cannot run inside a transaction)
     op.execute("COMMIT")
-    # Update existing rows
+    # Update existing rows from the old enum label to the new value
     op.execute(
-        "UPDATE notifications SET type = 'badge_alert' WHERE type = 'badge_creation'"
+        "UPDATE notifications SET type = 'badge_alert' WHERE type = 'BADGE_CREATION'"
     )
 
 
 def downgrade() -> None:
     # Revert rows back to the old value
     op.execute(
-        "UPDATE notifications SET type = 'badge_creation' WHERE type = 'badge_alert'"
+        "UPDATE notifications SET type = 'BADGE_CREATION' WHERE type = 'badge_alert'"
     )
     # Note: PostgreSQL does not support removing values from an existing enum type.
     # The 'badge_alert' value will remain in the enum but will no longer be used.
