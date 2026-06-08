@@ -273,7 +273,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
     },
     # 5. HNG Finalist - Design
     {
-        "title": "HNG Finalist – Design",
+        "title": "HNG Finalist - Design",
         "category": "internship",
         "canvas_data": {
             "layout_id": "hng_finalist_design_v1",
@@ -341,7 +341,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
     },
     # 6. HNG Finalist - Dev
     {
-        "title": "HNG Finalist – Dev",
+        "title": "HNG Finalist - Dev",
         "category": "internship",
         "canvas_data": {
             "layout_id": "hng_finalist_dev_v1",
@@ -409,7 +409,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
     },
     # 7. HNG Finalist - PM
     {
-        "title": "HNG Finalist – PM",
+        "title": "HNG Finalist - PM",
         "category": "internship",
         "canvas_data": {
             "layout_id": "hng_finalist_pm_v1",
@@ -443,7 +443,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                     "key": "track",
                     "type": "static",
                     "label": "Track",
-                    "value": "Design",
+                    "value": "Product Management",
                     "visible": True,
                 },
                 {
@@ -545,7 +545,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
     },
     # 9. HNG Finalist - FlareTag
     {
-        "title": "HNG Finalist – FlareTag",
+        "title": "HNG Finalist - FlareTag",
         "category": "internship",
         "canvas_data": {
             "layout_id": "hng_finalist_flaretag_v1",
