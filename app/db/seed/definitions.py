@@ -4,15 +4,96 @@ ROLE_SEED: list[str] = ["admin", "user"]
 ADMIN_SEED_EMAILS: list[str] = []
 
 PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
-    # ── 1. Dark Name Card (DesignWeekLagos) ───────────────────────────────
+    # 1. Design Week Pink
     {
-        "title": "Dark Name Card",
-        "category": "conferences",
+        "title": "Design Week Pink",
+        "category": "summit",
         "canvas_data": {
-            "layout_id": "dark_name_photo_v1",
+            "layout_id": "bold_name_pink_v1",
             "background": {
-                "type": "solid",
-                "color": "#1a1a1a",
+                "type": "split",
+                "split_ratio": 0.85,
+                "primary": {
+                    "type": "solid",
+                    "color": "#F5C6D0",
+                    "gradient": None,
+                },
+                "secondary": {
+                    "type": "solid",
+                    "color": "#E91E8C",
+                    "gradient": None,
+                },
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 56,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": None,
+                "has_logo": False,
+            },
+            "fields": [
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+                {
+                    "key": "role_title",
+                    "type": "participant_input",
+                    "label": "ROLE / TITLE",
+                    "placeholder": "e.g. Product Designer",
+                    "required": False,
+                    "visible": True,
+                },
+                {
+                    "key": "event_hashtag",
+                    "type": "static",
+                    "label": "Event Hashtag",
+                    "value": "#DesignWeekLagos",
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184750/template_1_3x_tygy1h.webp",
+    },
+    # 2. Design Week Purple Teal
+    {
+        "title": "Design Week Purple Teal",
+        "category": "summit",
+        "canvas_data": {
+            "layout_id": "split_purple_teal_v1",
+            "background": {
+                "type": "split",
+                "split_ratio": 0.45,
+                "primary": {
+                    "type": "solid",
+                    "color": "#6B3FA0",
+                    "gradient": None,
+                },
+                "secondary": {
+                    "type": "solid",
+                    "color": "#3ECFBF",
+                    "gradient": None,
+                },
             },
             "typography": {
                 "font_family": "DM Sans",
@@ -39,7 +120,68 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                     "key": "participant_name",
                     "type": "participant_input",
                     "label": "NAME",
-                    "placeholder": "Your full name",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+                {
+                    "key": "role_title",
+                    "type": "participant_input",
+                    "label": "ROLE / TITLE",
+                    "placeholder": "e.g. Product Designer",
+                    "required": False,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184750/template_9_3x_ngj43r.webp",
+    },
+    # 3. Dark Layout
+    {
+        "title": "Dark Layout",
+        "category": "conferences",
+        "canvas_data": {
+            "layout_id": "dark_name_photo_v1",
+            "background": {
+                "type": "solid",
+                "color": "#1A1A1A",
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 42,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": "top-left",
+                "has_logo": True,
+            },
+            "fields": [
+                {
+                    "key": "event_name",
+                    "type": "static",
+                    "label": "Event Name",
+                    "value": "DESIGNWEEKLAGOS",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
                     "required": True,
                     "visible": True,
                 },
@@ -65,7 +207,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
         },
         "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184750/template_7_3x_kerhur.webp",
     },
-    # ── 2. Dark Circle ────────────────────────────────────────────────────
+    # 4. Dark Circle
     {
         "title": "Dark Circle",
         "category": "conferences",
@@ -73,9 +215,17 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             "layout_id": "circle_photo_dark_v1",
             "background": {
                 "type": "split",
-                "top_color": "#1e1e1e",
-                "bottom_color": "#e0e0e0",
                 "split_ratio": 0.65,
+                "primary": {
+                    "type": "solid",
+                    "color": "#1E1E1E",
+                    "gradient": None,
+                },
+                "secondary": {
+                    "type": "solid",
+                    "color": "#E0E0E0",
+                    "gradient": None,
+                },
             },
             "typography": {
                 "font_family": "DM Sans",
@@ -88,7 +238,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                 "url": None,
                 "public_id": None,
                 "position": "top-center",
-                "has_logo": True,  # ← added
+                "has_logo": True,
             },
             "fields": [
                 {
@@ -104,7 +254,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                     "key": "participant_name",
                     "type": "participant_input",
                     "label": "NAME",
-                    "placeholder": "Your full name",
+                    "placeholder": "Your name",
                     "required": True,
                     "visible": True,
                 },
@@ -121,78 +271,16 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
         },
         "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184751/template_4_3x_yk8sav.webp",
     },
-    # ── 3. Design Week Pink ───────────────────────────────────────────────
+    # 5. HNG Finalist - Design
     {
-        "title": "Design Week Pink",
-        "category": "summit",
+        "title": "HNG Finalist - Design",
+        "category": "internship",
         "canvas_data": {
-            "layout_id": "bold_name_pink_v1",
+            "layout_id": "hng_finalist_design_v1",
             "background": {
-                "type": "solid",
-                "color": "#f5c6d0",
-            },
-            "typography": {
-                "font_family": "DM Sans",
-                "size_px": 56,
-                "weight": "bold",
-                "italic": False,
-                "underline": False,
-            },
-            "logo": {
+                "type": "image",
                 "url": None,
                 "public_id": None,
-                "position": None,
-                "has_logo": False,  # ← no logo in this template
-            },
-            "fields": [
-                {
-                    "key": "participant_photo",
-                    "type": "participant_upload",
-                    "label": "YOUR PHOTO",
-                    "required": False,
-                    "accepted_formats": ["jpg", "png", "webp"],
-                    "max_size_mb": 5,
-                    "visible": True,
-                },
-                {
-                    "key": "participant_name",
-                    "type": "participant_input",
-                    "label": "NAME",
-                    "placeholder": "Your full name",
-                    "required": True,
-                    "visible": True,
-                },
-                {
-                    "key": "role_title",
-                    "type": "participant_input",
-                    "label": "ROLE / TITLE",
-                    "placeholder": "e.g. Product Designer",
-                    "required": False,
-                    "visible": True,
-                },
-                {
-                    "key": "event_hashtag",
-                    "type": "static",
-                    "label": "Event Hashtag",
-                    "value": "#DesignWeekLagos",
-                    "visible": True,
-                },
-            ],
-            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
-        },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184750/template_1_3x_tygy1h.webp",
-    },
-    # ── 4. Design Week Purple Teal ────────────────────────────────────────
-    {
-        "title": "Design Week Purple Teal",
-        "category": "summit",
-        "canvas_data": {
-            "layout_id": "split_purple_teal_v1",
-            "background": {
-                "type": "split",
-                "top_color": "#6b3fa0",
-                "bottom_color": "#3ecfbf",
-                "split_ratio": 0.45,
             },
             "typography": {
                 "font_family": "DM Sans",
@@ -204,31 +292,29 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             "logo": {
                 "url": None,
                 "public_id": None,
-                "position": "top-left",
-                "has_logo": True,  # ← added
+                "position": "top-center",
+                "has_logo": True,
             },
             "fields": [
                 {
-                    "key": "event_name",
+                    "key": "badge_title",
                     "type": "static",
-                    "label": "Event Name",
-                    "value": "DESIGNWEEKLAGOS",
+                    "label": "Badge Title",
+                    "value": "Finalist",
                     "visible": True,
                 },
                 {
-                    "key": "participant_name",
-                    "type": "participant_input",
-                    "label": "NAME",
-                    "placeholder": "Your full name",
-                    "required": True,
+                    "key": "track",
+                    "type": "static",
+                    "label": "Track",
+                    "value": "Design",
                     "visible": True,
                 },
                 {
-                    "key": "role_title",
-                    "type": "participant_input",
-                    "label": "ROLE / TITLE",
-                    "placeholder": "e.g. Product Designer",
-                    "required": False,
+                    "key": "percentile_badge",
+                    "type": "static",
+                    "label": "Percentile",
+                    "value": "Top 5%",
                     "visible": True,
                 },
                 {
@@ -240,9 +326,297 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                     "max_size_mb": 5,
                     "visible": True,
                 },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780184750/template_9_3x_ngj43r.webp",
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780888578/design_ususcl.webp",
+    },
+    # 6. HNG Finalist - Dev
+    {
+        "title": "HNG Finalist - Dev",
+        "category": "internship",
+        "canvas_data": {
+            "layout_id": "hng_finalist_dev_v1",
+            "background": {
+                "type": "image",
+                "url": None,
+                "public_id": None,
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 42,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": "top-center",
+                "has_logo": True,
+            },
+            "fields": [
+                {
+                    "key": "badge_title",
+                    "type": "static",
+                    "label": "Badge Title",
+                    "value": "Finalist",
+                    "visible": True,
+                },
+                {
+                    "key": "track",
+                    "type": "static",
+                    "label": "Track",
+                    "value": "FrontEnd Dev.",
+                    "visible": True,
+                },
+                {
+                    "key": "percentile_badge",
+                    "type": "static",
+                    "label": "Percentile",
+                    "value": "Top 5%",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780888578/dev_gdoexx.webp",
+    },
+    # 7. HNG Finalist - PM
+    {
+        "title": "HNG Finalist - PM",
+        "category": "internship",
+        "canvas_data": {
+            "layout_id": "hng_finalist_pm_v1",
+            "background": {
+                "type": "image",
+                "url": None,
+                "public_id": None,
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 42,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": "top-center",
+                "has_logo": True,
+            },
+            "fields": [
+                {
+                    "key": "badge_title",
+                    "type": "static",
+                    "label": "Badge Title",
+                    "value": "Finalist",
+                    "visible": True,
+                },
+                {
+                    "key": "track",
+                    "type": "static",
+                    "label": "Track",
+                    "value": "Product Management",
+                    "visible": True,
+                },
+                {
+                    "key": "percentile_badge",
+                    "type": "static",
+                    "label": "Percentile",
+                    "value": "Top 5%",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780888577/design_2_uourqz.webp",
+    },
+    # 8. HNG Finalist
+    {
+        "title": "HNG Finalist",
+        "category": "internship",
+        "canvas_data": {
+            "layout_id": "hng_finalist_v1",
+            "background": {
+                "type": "image",
+                "url": None,
+                "public_id": None,
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 42,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": "top-center",
+                "has_logo": True,
+            },
+            "fields": [
+                {
+                    "key": "badge_title",
+                    "type": "static",
+                    "label": "Badge Title",
+                    "value": "Finalist",
+                    "visible": True,
+                },
+                {
+                    "key": "track",
+                    "type": "static",
+                    "label": "Track",
+                    "value": "Virtual Assistant",
+                    "visible": True,
+                },
+                {
+                    "key": "percentile_badge",
+                    "type": "static",
+                    "label": "Percentile",
+                    "value": "Top 5%",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780888577/design_1_e6spww.webp",
+    },
+    # 9. HNG Finalist - FlareTag
+    {
+        "title": "HNG Finalist - FlareTag",
+        "category": "internship",
+        "canvas_data": {
+            "layout_id": "hng_finalist_flaretag_v1",
+            "background": {
+                "type": "image",
+                "url": None,
+                "public_id": None,
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 42,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": "top-center",
+                "has_logo": True,
+            },
+            "fields": [
+                {
+                    "key": "badge_title",
+                    "type": "static",
+                    "label": "Badge Title",
+                    "value": "Finalist",
+                    "visible": True,
+                },
+                {
+                    "key": "track",
+                    "type": "static",
+                    "label": "Track",
+                    "value": "Design",
+                    "visible": True,
+                },
+                {
+                    "key": "percentile_badge",
+                    "type": "static",
+                    "label": "Percentile",
+                    "value": "Top 5%",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": False,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+                {
+                    "key": "organization",
+                    "type": "participant_input",
+                    "label": "ORGANIZATION",
+                    "placeholder": "e.g. Flaretag",
+                    "required": False,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780898542/design_3_lzjz4y.webp",
     },
 ]
