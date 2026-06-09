@@ -618,6 +618,11 @@ async def update_badge(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not own this badge.",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     return SuccessResponse(
         message="Badge updated successfully.",

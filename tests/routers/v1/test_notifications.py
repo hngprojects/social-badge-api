@@ -1,10 +1,10 @@
-from collections.abc import AsyncGenerator
-
 import uuid
+from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password

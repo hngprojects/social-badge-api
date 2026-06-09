@@ -168,6 +168,7 @@ class EditBadgeRequest(BaseModel):
     destination_link: str | None = None
     thumbnail_url: str | None = None
     access_type: int | None = None
+    access_code: str | None = None
     hashtags: list[str] | None = None
 
     @field_validator("title")
@@ -176,6 +177,17 @@ class EditBadgeRequest(BaseModel):
         if val is not None and not val.strip():
             raise ValueError("title cannot be empty")
         return val.strip() if val is not None else val
+
+    @field_validator("access_code")
+    @classmethod
+    def validate_access_code(cls, val: str | None) -> str | None:
+        if val is not None:
+            val = val.strip()
+            if not val:
+                return None
+            if len(val) < 4 or len(val) > 50:
+                raise ValueError("access_code must be between 4 and 50 characters")
+        return val
 
     @field_validator("hashtags")
     @classmethod
@@ -199,6 +211,7 @@ class BadgeDetailResponse(BaseModel):
     thumbnail_url: str | None
     logo_url: str | None
     access_type: int
+    access_code: str | None
     is_published: bool
     share_slug: str | None
     published_at: datetime | None
