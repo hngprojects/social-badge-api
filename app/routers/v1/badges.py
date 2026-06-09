@@ -37,6 +37,7 @@ from app.schemas.badge import (
     PlatformTemplateUsage,
     PublicBadgePageResponse,
     PublishedBadgeResponse,
+    ValidateAccessRequest,
 )
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.services.badge import (
@@ -881,3 +882,69 @@ async def increment_share(
     background_tasks.add_task(increment_badge_share_count, session, slug)
 
     return SuccessResponse(message="Share count increment scheduled.")
+
+
+@router.post(
+    "/public/{slug}/validate-access",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+    summary="Validate participant access code",
+    description=(
+        "Verifies whether a participant's submitted access code matches the "
+        "organiser-defined access code for a private badge. Returns 404 if the slug "
+        "does not resolve to a published badge. "
+        "If the badge is public, validation is bypassed and 200 OK is returned."
+    ),
+    responses={
+        200: {"description": "Access code is valid or badge is public."},
+        403: {"model": ErrorResponse, "description": "Invalid access code."},
+        404: {
+            "model": ErrorResponse,
+            "description": "Slug not found or badge is not published.",
+        },
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def validate_badge_access(
+    request: Request,
+    session: DBSession,
+    slug: str,
+    payload: ValidateAccessRequest,
+) -> SuccessResponse[None]:
+    """Validate the access code for a private badge."""
+    try:
+        badge = await get_public_badge_by_slug(session=session, slug=slug)
+    except PublicBadgeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Badge not found.",
+        ) from exc
+
+    if badge.access_type == 0:
+        return SuccessResponse(message="Access granted. This badge is public.")
+
+    if badge.access_type == 1:
+        if not badge.access_code:
+            # Failsafe: if a private badge somehow has no access code, fail closed.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid access code.",
+            )
+
+        expected = badge.access_code.strip().lower()
+        provided = payload.access_code.strip().lower()
+
+        if expected != provided:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid access code.",
+            )
+
+        return SuccessResponse(message="Access code is valid.")
+
+    # Unhandled access_type fallback
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid access configuration.",
+    )

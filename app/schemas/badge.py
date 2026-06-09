@@ -161,6 +161,12 @@ class BadgeListResponse(BaseModel):
     next: str | None = Field(None, description="Relative URL to the next page.")
 
 
+class ValidateAccessRequest(BaseModel):
+    access_code: str = Field(
+        ..., description="The access code provided by the participant."
+    )
+
+
 class EditBadgeRequest(BaseModel):
     title: str | None = None
     canvas_data: dict[str, Any] | None = None

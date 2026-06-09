@@ -2433,3 +2433,88 @@ async def test_get_single_badge_soft_deleted(
     )
     assert response.status_code == 404
     assert response.json()["message"] == "Badge not found."
+
+
+# --- Validate Access Tests ---
+
+
+async def test_validate_access_public_badge_bypasses(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "public-badge-test-slug"
+    badge.access_type = 0
+    badge.access_code = None
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "anything"},
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Access granted. This badge is public."
+
+
+async def test_validate_access_private_badge_success(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "private-badge-test-slug"
+    badge.access_type = 1
+    badge.access_code = "SECRET123"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={
+            "access_code": "  secret123  "
+        },  # Test case insensitivity and whitespace stripping
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Access code is valid."
+
+
+async def test_validate_access_private_badge_invalid(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "private-badge-invalid-slug"
+    badge.access_type = 1
+    badge.access_code = "SECRET123"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "wrongcode"},
+    )
+    assert response.status_code == 403
+    assert response.json()["message"] == "Invalid access code."
+
+
+async def test_validate_access_unpublished_badge_not_found(
+    client: AsyncClient,
+    badge: Badge,  # Unpublished by default
+) -> None:
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "secret"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_validate_access_invalid_slug(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/v1/badges/public/nonexistent-slug/validate-access",
+        json={"access_code": "secret"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
