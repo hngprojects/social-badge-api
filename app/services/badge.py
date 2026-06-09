@@ -582,6 +582,8 @@ async def edit_badge(
             field_updates["access_code"] = target_code
         elif target_type == 0:
             field_updates["access_code"] = None
+        else:
+            raise ValueError("access_type must be 0 (public) or 1 (private).")
 
     for field, value in field_updates.items():
         setattr(badge, field, value)
