@@ -294,6 +294,7 @@ async def test_unpublish_template_not_found(
 # Minimal valid PNG/JPEG magic bytes so the endpoint's signature check passes.
 _FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 _FAKE_JPEG = b"\xff\xd8\xff" + b"\x00" * 8
+_FAKE_SVG = b"<?xml version=\"1.0\"?><svg></svg>"
 _FAKE_URL = "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png"
 _FAKE_PUBLIC_ID = "template-logos/abc"
 
@@ -381,6 +382,29 @@ async def test_upload_logo_success(
     assert data["message"] == "Logo uploaded successfully."
     assert data["data"]["logo_url"] == _FAKE_URL
     mock_upload.assert_called_once_with(_FAKE_PNG)
+
+
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
+async def test_upload_logo_svg_success(
+    mock_upload: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    template_instance: Badge,
+) -> None:
+    mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
+
+    response = await client.put(
+        f"/api/v1/badges/{template_instance.id}/logo",
+        cookies=auth_cookies,
+        files={"file": ("logo.svg", _FAKE_SVG, "image/svg+xml")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Logo uploaded successfully."
+    assert data["data"]["logo_url"] == _FAKE_URL
+    mock_upload.assert_called_once_with(_FAKE_SVG)
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
