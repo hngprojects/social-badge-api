@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
-_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg"}
+_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/svg+xml"}
 
 # Magic bytes for format verification (cannot be spoofed via Content-Type header).
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -69,8 +69,12 @@ _JPEG_MAGIC = b"\xff\xd8\xff"
 
 
 def _is_valid_image(data: bytes) -> bool:
-    """Return True only if bytes start with a recognised PNG or JPEG signature."""
-    return data[:8] == _PNG_MAGIC or data[:3] == _JPEG_MAGIC
+    """Return True only if bytes start with a recognised PNG, JPEG, or SVG signature."""
+    if data[:8] == _PNG_MAGIC or data[:3] == _JPEG_MAGIC:
+        return True
+
+    stripped_data = data.lstrip()
+    return stripped_data.startswith(b"<?xml") or stripped_data.startswith(b"<svg")
 
 
 @router.post(
@@ -621,7 +625,7 @@ async def update_badge(
         ) from exc
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
@@ -685,7 +689,7 @@ async def upload_logo(
     if file.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type. Only PNG and JPG images are allowed.",
+            detail="Unsupported file type. Only PNG, JPG, and SVG images are allowed.",
         )
 
     # Read one byte beyond the limit so we can detect oversized files without
@@ -701,7 +705,7 @@ async def upload_logo(
     if not _is_valid_image(image_data):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type. Only PNG and JPG images are allowed.",
+            detail="Unsupported file type. Only PNG, JPG, and SVG images are allowed.",
         )
 
     try:
