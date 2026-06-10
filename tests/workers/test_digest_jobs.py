@@ -196,7 +196,8 @@ async def test_daily_digest_respects_toggle_off(
     organiser: User,
     badge: Badge,
 ) -> None:
-    """An organiser with notify_daily_digest=False gets no digest, even with activity."""
+    """An organiser with notify_daily_digest=False gets no digest,
+    even with activity."""
     today = datetime.now(UTC).replace(hour=8, minute=0, second=0, microsecond=0)
     for _ in range(2):
         await _create_badge_creation_notif(db_session, organiser.id, today, badge.id)

@@ -411,6 +411,7 @@ async def duplicate_badge(
         logo_url=None,
         logo_public_id=None,
         access_type=original.access_type,
+        access_code=original.access_code,
         is_published=False,
         share_slug=None,
         published_at=None,
@@ -567,6 +568,22 @@ async def edit_badge(
         raise BadgeNotFoundError
     if badge.organiser_id != organiser_id:
         raise NotBadgeOwnerError
+
+    if "access_type" in field_updates or "access_code" in field_updates:
+        target_type = field_updates.get("access_type", badge.access_type)
+        target_code = field_updates.get("access_code", badge.access_code)
+
+        if target_type == 1:
+            if not target_code or len(target_code) < 4 or len(target_code) > 50:
+                raise ValueError(
+                    "access_code is required and must be between 4 and 50 characters "
+                    "when access_type is private."
+                )
+            field_updates["access_code"] = target_code
+        elif target_type == 0:
+            field_updates["access_code"] = None
+        else:
+            raise ValueError("access_type must be 0 (public) or 1 (private).")
 
     for field, value in field_updates.items():
         setattr(badge, field, value)

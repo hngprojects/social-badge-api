@@ -40,6 +40,7 @@ class Badge(Base):
     logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     logo_public_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     access_type: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    access_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
