@@ -20,7 +20,7 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
                 },
                 "secondary": {
                     "type": "solid",
-                    "color": "#E91E8C",
+                    "color": "#e61b62",
                     "gradient": None,
                 },
             },
