@@ -548,4 +548,3 @@ def test_get_contact_subjects_service_is_idempotent() -> None:
     first = get_contact_subjects()
     second = get_contact_subjects()
     assert first is second
-

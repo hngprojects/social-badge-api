@@ -21,8 +21,7 @@ class EmailProvider(Protocol):
         subject: str,
         html_content: str,
         reply_to: str | None = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class SMTPEmailProvider:
@@ -58,6 +57,7 @@ class SMTPEmailProvider:
 
 
 email_provider: EmailProvider = SMTPEmailProvider()
+
 
 def _build_verification_html(token: str) -> str:
     action_url = f"{settings.FRONTEND_URL}/verify?token={token}"
@@ -138,7 +138,6 @@ def _build_security_alert_html(detected_at: datetime) -> str:
         "security_alert",
         formatted_time=formatted_time,
     )
-
 
 
 async def send_verification_email(to: str, token: str) -> None:

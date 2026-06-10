@@ -294,6 +294,7 @@ async def test_unpublish_template_not_found(
 # Minimal valid PNG/JPEG magic bytes so the endpoint's signature check passes.
 _FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 _FAKE_JPEG = b"\xff\xd8\xff" + b"\x00" * 8
+_FAKE_SVG = b"<?xml version=\"1.0\"?><svg></svg>"
 _FAKE_URL = "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png"
 _FAKE_PUBLIC_ID = "template-logos/abc"
 
@@ -381,6 +382,29 @@ async def test_upload_logo_success(
     assert data["message"] == "Logo uploaded successfully."
     assert data["data"]["logo_url"] == _FAKE_URL
     mock_upload.assert_called_once_with(_FAKE_PNG)
+
+
+@patch("app.services.badge.upload_logo", new_callable=AsyncMock)
+async def test_upload_logo_svg_success(
+    mock_upload: AsyncMock,
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    template_instance: Badge,
+) -> None:
+    mock_upload.return_value = (_FAKE_URL, _FAKE_PUBLIC_ID)
+
+    response = await client.put(
+        f"/api/v1/badges/{template_instance.id}/logo",
+        cookies=auth_cookies,
+        files={"file": ("logo.svg", _FAKE_SVG, "image/svg+xml")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Logo uploaded successfully."
+    assert data["data"]["logo_url"] == _FAKE_URL
+    mock_upload.assert_called_once_with(_FAKE_SVG)
 
 
 @patch("app.services.badge.delete_logo", new_callable=AsyncMock)
@@ -1982,6 +2006,7 @@ async def test_patch_template_response_contains_full_object(
         "thumbnail_url",
         "logo_url",
         "access_type",
+        "access_code",
         "is_published",
         "share_slug",
         "published_at",
@@ -2369,6 +2394,7 @@ async def test_get_single_badge_success(
         "thumbnail_url",
         "logo_url",
         "access_type",
+        "access_code",
         "is_published",
         "share_slug",
         "published_at",
@@ -2431,3 +2457,127 @@ async def test_get_single_badge_soft_deleted(
     )
     assert response.status_code == 404
     assert response.json()["message"] == "Badge not found."
+
+
+# --- Validate Access Tests ---
+
+
+async def test_validate_access_public_badge_bypasses(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "public-badge-test-slug"
+    badge.access_type = 0
+    badge.access_code = None
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "anything"},
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Access granted. This badge is public."
+
+
+async def test_validate_access_private_badge_success(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "private-badge-test-slug"
+    badge.access_type = 1
+    badge.access_code = "SECRET123"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={
+            "access_code": "  secret123  "
+        },  # Test case insensitivity and whitespace stripping
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Access code is valid."
+
+
+async def test_validate_access_private_badge_invalid(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "private-badge-invalid-slug"
+    badge.access_type = 1
+    badge.access_code = "SECRET123"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "wrongcode"},
+    )
+    assert response.status_code == 403
+    assert response.json()["message"] == "Invalid access code."
+
+
+async def test_validate_access_unpublished_badge_not_found(
+    client: AsyncClient,
+    badge: Badge,  # Unpublished by default
+    db_session: AsyncSession,
+) -> None:
+    badge.share_slug = "draft-badge-test-slug"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "secret"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_validate_access_invalid_slug(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/v1/badges/public/nonexistent-slug/validate-access",
+        json={"access_code": "secret"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_validate_access_private_badge_missing_stored_code(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    badge.is_published = True
+    badge.share_slug = "private-badge-missing-code-slug"
+    badge.access_type = 1
+    badge.access_code = None
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
+        json={"access_code": "anything"},
+    )
+    assert response.status_code == 403
+    assert response.json()["message"] == "Invalid access code."
+
+
+async def test_patch_template_invalid_access_type_rejected(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: Badge,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/badges/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"access_type": 2},
+    )
+    assert response.status_code == 422
+    assert (
+        "access_type must be 0 (public) or 1 (private)." in response.json()["message"]
+    )
