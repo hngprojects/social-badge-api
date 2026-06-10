@@ -37,6 +37,7 @@ from app.schemas.badge import (
     PlatformTemplateUsage,
     PublicBadgePageResponse,
     PublishedBadgeResponse,
+    ValidateAccessRequest,
 )
 from app.schemas.response import ErrorResponse, SuccessResponse
 from app.services.badge import (
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
-_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg"}
+_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/svg+xml"}
 
 # Magic bytes for format verification (cannot be spoofed via Content-Type header).
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -68,8 +69,12 @@ _JPEG_MAGIC = b"\xff\xd8\xff"
 
 
 def _is_valid_image(data: bytes) -> bool:
-    """Return True only if bytes start with a recognised PNG or JPEG signature."""
-    return data[:8] == _PNG_MAGIC or data[:3] == _JPEG_MAGIC
+    """Return True only if bytes start with a recognised PNG, JPEG, or SVG signature."""
+    if data[:8] == _PNG_MAGIC or data[:3] == _JPEG_MAGIC:
+        return True
+
+    stripped_data = data.lstrip()
+    return stripped_data.startswith(b"<?xml") or stripped_data.startswith(b"<svg")
 
 
 @router.post(
@@ -618,6 +623,11 @@ async def update_badge(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not own this badge.",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
     return SuccessResponse(
         message="Badge updated successfully.",
@@ -679,7 +689,7 @@ async def upload_logo(
     if file.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type. Only PNG and JPG images are allowed.",
+            detail="Unsupported file type. Only PNG, JPG, and SVG images are allowed.",
         )
 
     # Read one byte beyond the limit so we can detect oversized files without
@@ -695,7 +705,7 @@ async def upload_logo(
     if not _is_valid_image(image_data):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type. Only PNG and JPG images are allowed.",
+            detail="Unsupported file type. Only PNG, JPG, and SVG images are allowed.",
         )
 
     try:
@@ -876,3 +886,69 @@ async def increment_share(
     background_tasks.add_task(increment_badge_share_count, session, slug)
 
     return SuccessResponse(message="Share count increment scheduled.")
+
+
+@router.post(
+    "/public/{slug}/validate-access",
+    response_model=SuccessResponse[None],
+    status_code=status.HTTP_200_OK,
+    summary="Validate participant access code",
+    description=(
+        "Verifies whether a participant's submitted access code matches the "
+        "organiser-defined access code for a private badge. Returns 404 if the slug "
+        "does not resolve to a published badge. "
+        "If the badge is public, validation is bypassed and 200 OK is returned."
+    ),
+    responses={
+        200: {"description": "Access code is valid or badge is public."},
+        403: {"model": ErrorResponse, "description": "Invalid access code."},
+        404: {
+            "model": ErrorResponse,
+            "description": "Slug not found or badge is not published.",
+        },
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+    },
+)
+@limiter.limit("60/minute")
+async def validate_badge_access(
+    request: Request,
+    session: DBSession,
+    slug: str,
+    payload: ValidateAccessRequest,
+) -> SuccessResponse[None]:
+    """Validate the access code for a private badge."""
+    try:
+        badge = await get_public_badge_by_slug(session=session, slug=slug)
+    except PublicBadgeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Badge not found.",
+        ) from exc
+
+    if badge.access_type == 0:
+        return SuccessResponse(message="Access granted. This badge is public.")
+
+    if badge.access_type == 1:
+        if not badge.access_code:
+            # Failsafe: if a private badge somehow has no access code, fail closed.
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid access code.",
+            )
+
+        expected = badge.access_code.strip().lower()
+        provided = payload.access_code.strip().lower()
+
+        if expected != provided:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid access code.",
+            )
+
+        return SuccessResponse(message="Access code is valid.")
+
+    # Unhandled access_type fallback
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid access configuration.",
+    )

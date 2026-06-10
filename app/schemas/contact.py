@@ -42,7 +42,7 @@ class ContactRequest(BaseModel):
         json_schema_extra={
             "example": "I have a question about setting up my first badge template.",
             "minLength": 10,
-            "maxLength": 5000,
+            "maxLength": 500,
         },
     )
 
@@ -76,8 +76,8 @@ class ContactRequest(BaseModel):
         stripped = val.strip()
         if len(stripped) < 10:
             raise ValueError("Message must be at least 10 characters long")
-        if len(stripped) > 5000:
-            raise ValueError("Message must not exceed 5000 characters")
+        if len(stripped) > 500:
+            raise ValueError("Message must not exceed 500 characters")
         return validate_no_html(stripped, "Message")
 
 
@@ -91,4 +91,17 @@ class ContactResponse(BaseModel):
         ...,
         description="The email address we will reply to.",
         json_schema_extra={"example": "alex@yourcompany.com"},
+    )
+
+
+class ContactSubjectOption(BaseModel):
+    value: str = Field(
+        ...,
+        description="The enum value to submit in the contact form payload.",
+        json_schema_extra={"example": "general"},
+    )
+    label: str = Field(
+        ...,
+        description="Human-readable label for the dropdown option.",
+        json_schema_extra={"example": "General Question"},
     )

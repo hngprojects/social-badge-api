@@ -7,9 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Notification, NotificationType, UserNotificationPreference
 from app.schemas.notification import (
-    NotificationListResponse,
     NotificationPreferencesResponse,
-    NotificationResponse,
 )
 
 _DEFAULTS: dict[str, bool] = {

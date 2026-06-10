@@ -3,8 +3,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, func
-from sqlalchemy import Enum as SAEnum, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from uuid_utils import uuid7 as _uuid7
@@ -57,7 +57,7 @@ class UserNotificationPreference(Base):
 
 
 class NotificationType(enum.StrEnum):
-    BADGE_CREATION = "badge_creation"
+    BADGE_CREATION = "badge_alert"
     DAILY_DIGEST = "daily_digest"
     WEEKLY_REPORT = "weekly_report"
 

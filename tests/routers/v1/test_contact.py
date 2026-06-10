@@ -6,7 +6,8 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 
 from app.core.exceptions import EmailDeliveryError
-from app.schemas.contact import ContactRequest, ContactTopic
+from app.schemas.contact import ContactRequest, ContactSubjectOption, ContactTopic
+from app.services.contact import get_contact_subjects
 
 
 @pytest.fixture
@@ -114,9 +115,9 @@ class TestContactRequestSchema:
                 last_name=None,
                 email="alex@example.com",
                 subject=ContactTopic.GENERAL,
-                message="x" * 5001,
+                message="x" * 501,
             )
-        assert "5000 characters" in str(exc_info.value)
+        assert "500 characters" in str(exc_info.value)
 
     @pytest.mark.parametrize(
         "topic",
@@ -470,3 +471,80 @@ async def test_contact_rejects_xss_in_last_name(
     response = await client.post("/api/v1/contact", json=body)
     assert response.status_code == 422
     assert response.json()["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# GET /contact/subjects tests
+# ---------------------------------------------------------------------------
+
+
+async def test_get_contact_subjects_returns_all_options(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/contact/subjects")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["message"] == "Contact subject options retrieved successfully"
+
+    subjects = data["data"]
+    assert isinstance(subjects, list)
+    assert len(subjects) == len(ContactTopic)
+
+    # Each entry must have value and label keys
+    for entry in subjects:
+        assert "value" in entry
+        assert "label" in entry
+
+    # All enum values must be present
+    returned_values = {s["value"] for s in subjects}
+    expected_values = {topic.value for topic in ContactTopic}
+    assert returned_values == expected_values
+
+
+async def test_get_contact_subjects_values_match_enum(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/contact/subjects")
+    subjects = response.json()["data"]
+
+    valid_values = {topic.value for topic in ContactTopic}
+    for entry in subjects:
+        assert entry["value"] in valid_values
+
+
+async def test_get_contact_subjects_labels_are_nonempty(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/contact/subjects")
+    subjects = response.json()["data"]
+
+    for entry in subjects:
+        assert isinstance(entry["label"], str)
+        assert len(entry["label"].strip()) > 0
+
+
+async def test_get_contact_subjects_order_matches_enum(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/v1/contact/subjects")
+    subjects = response.json()["data"]
+
+    expected_order = [topic.value for topic in ContactTopic]
+    actual_order = [s["value"] for s in subjects]
+    assert actual_order == expected_order
+
+
+def test_get_contact_subjects_service_returns_subject_options() -> None:
+    subjects = get_contact_subjects()
+    assert isinstance(subjects, list)
+    assert len(subjects) == len(ContactTopic)
+    assert all(isinstance(s, ContactSubjectOption) for s in subjects)
+
+
+def test_get_contact_subjects_service_is_idempotent() -> None:
+    """Calling twice returns the same cached list."""
+    first = get_contact_subjects()
+    second = get_contact_subjects()
+    assert first is second
