@@ -2581,3 +2581,16 @@ async def test_patch_template_invalid_access_type_rejected(
     assert (
         "access_type must be 0 (public) or 1 (private)." in response.json()["message"]
     )
+
+async def test_patch_template_access_code_too_long_rejected(
+    client: AsyncClient,
+    auth_cookies: dict[str, str],
+    patch_target: Badge,
+) -> None:
+    response = await client.patch(
+        f"/api/v1/badges/{patch_target.id}",
+        cookies=auth_cookies,
+        json={"access_type": 1, "access_code": "12345678901"},
+    )
+    assert response.status_code == 422
+    assert "access_code must be between 4 and 10 characters" in response.json()["message"]
