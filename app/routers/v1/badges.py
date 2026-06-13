@@ -800,6 +800,7 @@ async def get_participant_page(
         message="Badge data retrieved successfully.",
         data=PublicBadgePageResponse(
             title=badge.title,
+            access_type=badge.access_type,
             canvas_data=badge.canvas_data,
             logo_url=badge.logo_url,
             default_caption=badge.default_caption,
