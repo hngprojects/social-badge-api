@@ -71,6 +71,9 @@ class PublicBadgePageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     title: str = Field(..., description="The event/template title.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
     canvas_data: dict[str, Any] = Field(
         ..., description="Layout and branding JSON for live badge preview."
     )
