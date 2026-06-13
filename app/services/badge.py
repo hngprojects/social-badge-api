@@ -574,9 +574,9 @@ async def edit_badge(
         target_code = field_updates.get("access_code", badge.access_code)
 
         if target_type == 1:
-            if not target_code or len(target_code) < 4 or len(target_code) > 50:
+            if not target_code or len(target_code) < 4 or len(target_code) > 10:
                 raise ValueError(
-                    "access_code is required and must be between 4 and 50 characters "
+                    "access_code is required and must be between 4 and 10 characters "
                     "when access_type is private."
                 )
             field_updates["access_code"] = target_code

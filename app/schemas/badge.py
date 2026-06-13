@@ -194,8 +194,8 @@ class EditBadgeRequest(BaseModel):
             val = val.strip()
             if not val:
                 return None
-            if len(val) < 4 or len(val) > 50:
-                raise ValueError("access_code must be between 4 and 50 characters")
+            if len(val) < 4 or len(val) > 10:
+                raise ValueError("access_code must be between 4 and 10 characters")
         return val
 
     @field_validator("hashtags")
