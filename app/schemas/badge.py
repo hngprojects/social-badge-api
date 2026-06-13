@@ -71,6 +71,9 @@ class PublicBadgePageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     title: str = Field(..., description="The event/template title.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
     canvas_data: dict[str, Any] = Field(
         ..., description="Layout and branding JSON for live badge preview."
     )
@@ -191,8 +194,8 @@ class EditBadgeRequest(BaseModel):
             val = val.strip()
             if not val:
                 return None
-            if len(val) < 4 or len(val) > 50:
-                raise ValueError("access_code must be between 4 and 50 characters")
+            if len(val) < 4 or len(val) > 10:
+                raise ValueError("access_code must be between 4 and 10 characters")
         return val
 
     @field_validator("hashtags")
