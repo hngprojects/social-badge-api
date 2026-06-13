@@ -294,7 +294,7 @@ async def test_unpublish_template_not_found(
 # Minimal valid PNG/JPEG magic bytes so the endpoint's signature check passes.
 _FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 _FAKE_JPEG = b"\xff\xd8\xff" + b"\x00" * 8
-_FAKE_SVG = b"<?xml version=\"1.0\"?><svg></svg>"
+_FAKE_SVG = b'<?xml version="1.0"?><svg></svg>'
 _FAKE_URL = "https://res.cloudinary.com/demo/image/upload/template-logos/abc.png"
 _FAKE_PUBLIC_ID = "template-logos/abc"
 
@@ -2459,112 +2459,216 @@ async def test_get_single_badge_soft_deleted(
     assert response.json()["message"] == "Badge not found."
 
 
-# --- Validate Access Tests ---
+# ── GET /public/{slug} — access_type / access_code ───────────────────────────
 
 
-async def test_validate_access_public_badge_bypasses(
+async def test_get_public_badge_public_no_access_code_returns_200(
     client: AsyncClient,
     badge: Badge,
     db_session: AsyncSession,
 ) -> None:
+    """Public badge (access_type=0) is accessible without any access_code."""
     badge.is_published = True
-    badge.share_slug = "public-badge-test-slug"
+    badge.share_slug = "public-badge-slug01"
     badge.access_type = 0
     badge.access_code = None
     await db_session.commit()
 
-    response = await client.post(
-        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
-        json={"access_code": "anything"},
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
     )
     assert response.status_code == 200
-    assert response.json()["message"] == "Access granted. This badge is public."
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["data"]["access_type"] == 0
 
 
-async def test_validate_access_private_badge_success(
+async def test_get_public_badge_public_with_access_code_ignored(
     client: AsyncClient,
     badge: Badge,
     db_session: AsyncSession,
 ) -> None:
+    """Supplying an access_code for a public badge is harmless — still 200."""
     badge.is_published = True
-    badge.share_slug = "private-badge-test-slug"
-    badge.access_type = 1
-    badge.access_code = "SECRET123"
+    badge.share_slug = "public-badge-slug02"
+    badge.access_type = 0
+    badge.access_code = None
     await db_session.commit()
 
-    response = await client.post(
-        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
-        json={
-            "access_code": "  secret123  "
-        },  # Test case insensitivity and whitespace stripping
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "anything"},
     )
     assert response.status_code == 200
-    assert response.json()["message"] == "Access code is valid."
+    assert response.json()["data"]["access_type"] == 0
 
 
-async def test_validate_access_private_badge_invalid(
+async def test_get_public_badge_private_no_access_code_returns_401(
     client: AsyncClient,
     badge: Badge,
     db_session: AsyncSession,
 ) -> None:
+    """Private badge without access_code returns 401 so the frontend can prompt."""
     badge.is_published = True
-    badge.share_slug = "private-badge-invalid-slug"
+    badge.share_slug = "private-badge-slug01"
     badge.access_type = 1
-    badge.access_code = "SECRET123"
+    badge.access_code = "SECRET1"
     await db_session.commit()
 
-    response = await client.post(
-        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
-        json={"access_code": "wrongcode"},
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+    )
+    assert response.status_code == 401
+    assert "access code" in response.json()["message"].lower()
+
+
+async def test_get_public_badge_private_correct_access_code_returns_200(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """Private badge with the correct access_code returns badge data."""
+    badge.is_published = True
+    badge.share_slug = "private-badge-slug02"
+    badge.access_type = 1
+    badge.access_code = "SECRET1"
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "SECRET1"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["access_type"] == 1
+
+
+async def test_get_public_badge_private_access_code_case_insensitive(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """Access code comparison is case-insensitive and strips whitespace."""
+    badge.is_published = True
+    badge.share_slug = "private-badge-slug03"
+    badge.access_type = 1
+    badge.access_code = "MyPass9"
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "  mypass9  "},
+    )
+    assert response.status_code == 200
+
+
+async def test_get_public_badge_private_wrong_access_code_returns_403(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """Private badge with incorrect access_code returns 403."""
+    badge.is_published = True
+    badge.share_slug = "private-badge-slug04"
+    badge.access_type = 1
+    badge.access_code = "CORRECT1"
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "WRONG1234"},
     )
     assert response.status_code == 403
     assert response.json()["message"] == "Invalid access code."
 
 
-async def test_validate_access_unpublished_badge_not_found(
-    client: AsyncClient,
-    badge: Badge,  # Unpublished by default
-    db_session: AsyncSession,
-) -> None:
-    badge.share_slug = "draft-badge-test-slug"
-    await db_session.commit()
-
-    response = await client.post(
-        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
-        json={"access_code": "secret"},
-    )
-    assert response.status_code == 404
-    assert response.json()["message"] == "Badge not found."
-
-
-async def test_validate_access_invalid_slug(
-    client: AsyncClient,
-) -> None:
-    response = await client.post(
-        "/api/v1/badges/public/nonexistent-slug/validate-access",
-        json={"access_code": "secret"},
-    )
-    assert response.status_code == 404
-    assert response.json()["message"] == "Badge not found."
-
-
-async def test_validate_access_private_badge_missing_stored_code(
+async def test_get_public_badge_private_missing_stored_code_returns_403(
     client: AsyncClient,
     badge: Badge,
     db_session: AsyncSession,
 ) -> None:
+    """Private badge with no stored code fails
+    closed (403) even with a supplied code."""
     badge.is_published = True
-    badge.share_slug = "private-badge-missing-code-slug"
+    badge.share_slug = "private-badge-slug05"
     badge.access_type = 1
     badge.access_code = None
     await db_session.commit()
 
-    response = await client.post(
-        f"/api/v1/badges/public/{badge.share_slug}/validate-access",
-        json={"access_code": "anything"},
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "anything"},
     )
     assert response.status_code == 403
     assert response.json()["message"] == "Invalid access code."
+
+
+async def test_get_public_badge_private_unpublished_returns_404(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """An unpublished private badge returns 404 regardless of access_code."""
+    badge.is_published = False
+    badge.share_slug = "private-badge-slug06"
+    badge.access_type = 1
+    badge.access_code = "SECRET1"
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "SECRET1"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_get_public_badge_nonexistent_slug_returns_404(
+    client: AsyncClient,
+) -> None:
+    """An entirely unknown slug returns 404 regardless of access_code param."""
+    response = await client.get(
+        "/api/v1/badges/public/totallymadeup99",
+        params={"access_code": "anything"},
+    )
+    assert response.status_code == 404
+    assert response.json()["message"] == "Badge not found."
+
+
+async def test_get_public_badge_private_no_auth_header_needed(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """Private badge requires no Bearer token — only the access_code query param."""
+    badge.is_published = True
+    badge.share_slug = "private-badge-slug07"
+    badge.access_type = 1
+    badge.access_code = "OPEN123"
+    await db_session.commit()
+
+    # No cookies / auth headers
+    response = await client.get(
+        f"/api/v1/badges/public/{badge.share_slug}",
+        params={"access_code": "OPEN123"},
+    )
+    assert response.status_code == 200
+
+
+async def test_get_public_badge_access_type_returned_in_response(
+    client: AsyncClient,
+    badge: Badge,
+    db_session: AsyncSession,
+) -> None:
+    """access_type is included in the response payload for both public and private."""
+    badge.is_published = True
+    badge.share_slug = "access-type-check001"
+    badge.access_type = 0
+    badge.access_code = None
+    await db_session.commit()
+
+    response = await client.get(f"/api/v1/badges/public/{badge.share_slug}")
+    assert response.status_code == 200
+    assert "access_type" in response.json()["data"]
 
 
 async def test_patch_template_invalid_access_type_rejected(
@@ -2582,6 +2686,7 @@ async def test_patch_template_invalid_access_type_rejected(
         "access_type must be 0 (public) or 1 (private)." in response.json()["message"]
     )
 
+
 async def test_patch_template_access_code_too_long_rejected(
     client: AsyncClient,
     auth_cookies: dict[str, str],
@@ -2593,4 +2698,6 @@ async def test_patch_template_access_code_too_long_rejected(
         json={"access_type": 1, "access_code": "12345678901"},
     )
     assert response.status_code == 422
-    assert "access_code must be between 4 and 10 characters" in response.json()["message"]
+    assert (
+        "access_code must be between 4 and 10 characters" in response.json()["message"]
+    )
