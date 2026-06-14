@@ -1466,6 +1466,8 @@ async def test_list_instances_response_shape(
         "platform_template_id",
         "thumbnail_url",
         "is_published",
+        "access_type",
+        "access_code",
         "status",
         "share_slug",
         "published_at",

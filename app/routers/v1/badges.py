@@ -180,6 +180,8 @@ async def create_instance(
                                     "platform_template_id": "019e1b66-c4...fe4f9c00",
                                     "thumbnail_url": None,
                                     "is_published": True,
+                                    "access_type": 0,
+                                    "access_code": None,
                                     "status": "published",
                                     "share_slug": "abcdef123456",
                                     "published_at": "2026-05-20T10:00:00Z",
