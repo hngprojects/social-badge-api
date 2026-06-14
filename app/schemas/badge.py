@@ -46,6 +46,12 @@ class PublishedBadgeResponse(BaseModel):
     id: UUID = Field(..., description="The template instance id.")
     title: str = Field(..., description="The template title.")
     is_published: bool = Field(..., description="Whether the template is published.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
+    )
     published_at: datetime | None = Field(
         ..., description="When the template was published (null if never published)."
     )
@@ -102,6 +108,12 @@ class DuplicateBadgeResponse(BaseModel):
     )
     organiser_id: UUID = Field(..., description="Owner of the copy.")
     is_published: bool = Field(..., description="Always False for a new copy.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
+    )
     created_at: datetime = Field(..., description="When the copy was created.")
 
 
@@ -124,6 +136,12 @@ class BadgeSummary(BaseModel):
     )
     is_published: bool = Field(
         ..., description="Whether the template is currently published."
+    )
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
     )
     share_slug: str | None = Field(
         None,
