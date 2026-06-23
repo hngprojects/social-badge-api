@@ -22,7 +22,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             password=password_byte_enc,
             hashed_password=hashed_password_byte_enc,
         )
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
