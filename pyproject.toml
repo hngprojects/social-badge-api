@@ -3,7 +3,7 @@ name = "social-badge-api"
 version = "0.1.0"
 description = "social badge backend api"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "aiosmtplib>=5.1.0",
     "alembic>=1.18.4",
@@ -41,7 +41,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
@@ -63,7 +63,7 @@ select = ["E", "W", "F", "I", "UP", "B", "T20", "S", "ASYNC"]
 override-dependencies = ["redis>=7.4.0"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
