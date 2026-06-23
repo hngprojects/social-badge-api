@@ -24,7 +24,7 @@ class RequestContextLogger:
         self.context: dict[str, Any] = {"request_id": self.request_id, **context}
         self._token: contextvars.Token[dict[str, Any] | None] | None = None
 
-    async def __aenter__(self) -> "RequestContextLogger":
+    async def __aenter__(self) -> RequestContextLogger:
         self._token = request_context.set(self.context)
         return self
 

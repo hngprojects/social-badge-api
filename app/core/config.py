@@ -111,7 +111,7 @@ class Settings(BaseSettings):
         raise ValueError(f"Invalid format for ALLOWED_ORIGINS: {val}")
 
     @model_validator(mode="after")
-    def validate_cookie_policy(self) -> "Settings":
+    def validate_cookie_policy(self) -> Settings:
         if self.COOKIE_SAMESITE == "none" and not self.COOKIE_SECURE:
             raise ValueError("COOKIE_SECURE must be True when COOKIE_SAMESITE='none'")
         return self

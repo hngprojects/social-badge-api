@@ -182,7 +182,7 @@ class ResetPasswordRequest(BaseModel):
         return validate_password_strength(val)
 
     @model_validator(mode="after")
-    def validate_password_match(self) -> "ResetPasswordRequest":
+    def validate_password_match(self) -> ResetPasswordRequest:
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self

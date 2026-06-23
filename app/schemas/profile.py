@@ -137,13 +137,13 @@ class ChangePasswordRequest(BaseModel):
         return val
 
     @model_validator(mode="after")
-    def passwords_must_match(self) -> "ChangePasswordRequest":
+    def passwords_must_match(self) -> ChangePasswordRequest:
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 
     @model_validator(mode="after")
-    def new_must_differ_from_current(self) -> "ChangePasswordRequest":
+    def new_must_differ_from_current(self) -> ChangePasswordRequest:
         if self.current_password == self.new_password:
             raise ValueError("New password must differ from the current password")
         return self
