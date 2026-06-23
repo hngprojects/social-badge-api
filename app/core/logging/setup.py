@@ -5,9 +5,9 @@ from typing import Any
 
 from loguru import logger
 
+from app.core import sanitizer
 from app.core.logging.context import request_context
 from app.core.logging.format import LogFormat
-from app.core.sanitizer import data_sanitizer
 
 
 class InterceptHandler(logging.Handler):
@@ -47,7 +47,7 @@ def _context_patcher(record: Any) -> None:  # type: ignore[type-arg]
         record["extra"].update(ctx)
 
     # Globally sanitize PII from all interpolated log messages
-    record["message"] = data_sanitizer.sanitize_for_logging(record["message"])
+    record["message"] = sanitizer.sanitize_for_logging(record["message"])
 
 
 def setup_logging(

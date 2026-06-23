@@ -6,8 +6,8 @@ from fastapi import Request, Response
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core import sanitizer
 from app.core.logging import RequestContextLogger
-from app.core.sanitizer import data_sanitizer
 
 
 def _client_ip(request: Request) -> str:
@@ -35,9 +35,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         client_ip = _client_ip(request)
         method = request.method
         path = request.url.path
-        query = data_sanitizer.sanitize_query(request.url.query)
+        query = sanitizer.sanitize_query(request.url.query)
         user_agent = (request.headers.get("user-agent", "") or "")[:200]
-        safe_hdrs = data_sanitizer.sanitize_headers(dict(request.headers))
+        safe_hdrs = sanitizer.sanitize_headers(dict(request.headers))
 
         ctx: dict = {
             "client_ip": client_ip,
