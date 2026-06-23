@@ -12,16 +12,11 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.users import User
-
-
-def uuid7() -> uuid.UUID:
-    return uuid.UUID(bytes=_uuid7().bytes)
 
 
 class AuthProvider(Base):
@@ -35,7 +30,7 @@ class AuthProvider(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
     provider: Mapped[str] = mapped_column(String(50))
     provider_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -48,13 +43,13 @@ class AuthProvider(Base):
         server_default=func.now(),
     )
 
-    user: Mapped["User"] = relationship(back_populates="auth_providers")
+    user: Mapped[User] = relationship(back_populates="auth_providers")
 
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
@@ -69,7 +64,7 @@ class RefreshToken(Base):
     )
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
 
     family_id: Mapped[uuid.UUID] = mapped_column(
         nullable=False, index=True, default=uuid.uuid4

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
@@ -13,15 +12,11 @@ if TYPE_CHECKING:
     from app.models.badges import Badge
 
 
-def uuid7() -> uuid.UUID:
-    return uuid.UUID(bytes=_uuid7().bytes)
-
-
 class PlatformTemplate(Base):
     __tablename__ = "platform_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid7, index=True, nullable=False
+        primary_key=True, default=uuid.uuid7, index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
@@ -39,7 +34,7 @@ class PlatformTemplate(Base):
     )
 
     # Relationship to Badge (formerly OrganiserTemplate)
-    badges: Mapped[list["Badge"]] = relationship(
+    badges: Mapped[list[Badge]] = relationship(
         "Badge",
         back_populates="platform_template",
         cascade="all, delete-orphan",
