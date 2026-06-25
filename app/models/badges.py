@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -5,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
@@ -14,15 +15,17 @@ if TYPE_CHECKING:
     from app.models.users import User
 
 
-def uuid7() -> uuid.UUID:
-    return uuid.UUID(bytes=_uuid7().bytes)
-
-
 class Badge(Base):
+    """Database representation of an event or organization badge.
+
+    Stores template configurations, custom layouts (canvas data), accessibility options,
+    access control (such as codes or privacy types), and engagement metrics.
+    """
+
     __tablename__ = "badges"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid7, index=True, nullable=False
+        primary_key=True, default=uuid.uuid7, index=True, nullable=False
     )
     organiser_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
@@ -61,17 +64,14 @@ class Badge(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Relationship back to the User
-    organiser: Mapped["User"] = relationship("User", back_populates="badges")
+    organiser: Mapped[User] = relationship("User", back_populates="badges")
 
-    # Relationship to PlatformTemplate
-    platform_template: Mapped["PlatformTemplate"] = relationship(
+    platform_template: Mapped[PlatformTemplate] = relationship(
         "PlatformTemplate",
         back_populates="badges",
     )
 
-    # Relationships to child tables
-    hashtags: Mapped[list["BadgeHashtag"]] = relationship(
+    hashtags: Mapped[list[BadgeHashtag]] = relationship(
         "BadgeHashtag",
         back_populates="badge",
         cascade="all, delete-orphan",
@@ -79,10 +79,17 @@ class Badge(Base):
 
 
 class BadgeHashtag(Base):
+    """Database representation of a social media hashtag associated with a specific
+    badge.
+
+    Enables categorization and aggregation of badges to support sharing campaign
+    analytics and discovery.
+    """
+
     __tablename__ = "badge_hashtags"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid7, index=True, nullable=False
+        primary_key=True, default=uuid.uuid7, index=True, nullable=False
     )
     badge_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("badges.id", ondelete="CASCADE"),
@@ -91,5 +98,4 @@ class BadgeHashtag(Base):
     )
     hashtag: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
 
-    # Relationship back to the Badge
-    badge: Mapped["Badge"] = relationship("Badge", back_populates="hashtags")
+    badge: Mapped[Badge] = relationship("Badge", back_populates="hashtags")

@@ -7,7 +7,6 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid_utils import uuid7 as _uuid7
 
 from app.models.base import Base
 
@@ -15,14 +14,16 @@ if TYPE_CHECKING:
     from app.models.users import User
 
 
-def uuid7() -> uuid.UUID:
-    return uuid.UUID(bytes=_uuid7().bytes)
-
-
 class UserNotificationPreference(Base):
+    """Database representation of user-specific notification preferences.
+
+    Configures opt-in/opt-out toggles for various email alerts, daily digests, and
+    weekly reporting.
+    """
+
     __tablename__ = "user_notification_preferences"
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         unique=True,
@@ -53,20 +54,31 @@ class UserNotificationPreference(Base):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship(back_populates="notification_preferences")
+    user: Mapped[User] = relationship(back_populates="notification_preferences")
 
 
 class NotificationType(enum.StrEnum):
+    """Enumeration of supported notification types within the system.
+
+    Defines categories such as badge creation alerts, daily digests, and weekly reports.
+    """
+
     BADGE_CREATION = "badge_alert"
     DAILY_DIGEST = "daily_digest"
     WEEKLY_REPORT = "weekly_report"
 
 
 class Notification(Base):
+    """Database representation of an individual user notification.
+
+    Stores the notification type, message title, body text, read/unread status, and
+    optional contextual metadata (extra data) for system alerts and communications.
+    """
+
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, default=uuid7, nullable=False
+        primary_key=True, default=uuid.uuid7, nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -91,7 +103,7 @@ class Notification(Base):
         index=True,
     )
 
-    user: Mapped["User"] = relationship(back_populates="notifications")
+    user: Mapped[User] = relationship(back_populates="notifications")
 
     __table_args__ = (
         Index("ix_notifications_user_created", "user_id", "created_at"),
