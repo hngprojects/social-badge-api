@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_cloudinary_public_id(url: str) -> str | None:
-    """
-    Parses a Cloudinary URL to extract the public ID of the hosted asset.
+    """Parses a Cloudinary URL to extract the public ID of the hosted asset.
 
     Handles URLs with and without version segments and removes file extensions.
     """
@@ -58,8 +57,7 @@ async def update_profile_photo(
     user: User,
     photo_data: bytes,
 ) -> User:
-    """
-    Uploads a new profile photo to Cloudinary and updates the user's database record.
+    """Uploads a new profile photo to Cloudinary and updates the user's database record.
 
     Extracts the old photo's public ID to queue it for deletion,
     uploads the new image binary to Cloudinary, commits the new URL to the database,
@@ -101,12 +99,11 @@ async def remove_profile_photo(
     session: AsyncSession,
     user: User,
 ) -> User:
-    """
-    Resets the user's profile photo URL to None in the database
-    and deletes the asset from Cloudinary.
+    """Resets the user's profile photo URL to None in the database and deletes the asset
+    from Cloudinary.
 
-    Extracts the public ID from the current photo URL, updates the database,
-    commits the session, and calls Cloudinary to delete the asset.
+    Extracts the public ID from the current photo URL, updates the database, commits the
+    session, and calls Cloudinary to delete the asset.
     """
     if user.profile_photo_url:
         public_id = _extract_cloudinary_public_id(user.profile_photo_url)
@@ -136,11 +133,10 @@ async def update_profile(
     email: str | None = None,
     role: str | None = None,
 ) -> User:
-    """
-    Updates the user's textual profile fields (names, email, role) in the database.
+    """Updates the user's textual profile fields (names, email, role) in the database.
 
-    Applies any non-None updates to the user instance, commits the transaction,
-    and refreshes the user.
+    Applies any non-None updates to the user instance, commits the transaction, and
+    refreshes the user.
     """
     if first_name is not None:
         user.first_name = first_name
@@ -165,14 +161,13 @@ async def delete_profile(
     access_token: str | None = None,
     refresh_token: str | None = None,
 ) -> None:
-    """
-    Deletes a user's profile, all associated database records,
-    and their Cloudinary assets.
+    """Deletes a user's profile, all associated database records, and their Cloudinary
+    assets.
 
     Collects public IDs for the user's profile photo, badge logos, and badge thumbnails.
-    Deletes the User record from the database (cascading deletes where set up),
-    commits, deletes all collected Cloudinary assets asynchronously,
-    and invalidates the user's session tokens.
+    Deletes the User record from the database (cascading deletes where set up), commits,
+    deletes all collected Cloudinary assets asynchronously, and invalidates the user's
+    session tokens.
     """
     stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
@@ -237,8 +232,7 @@ async def change_password(
     access_token: str | None,
     refresh_token: str | None,
 ) -> None:
-    """
-    Updates the authenticated user's password after verifying their current password.
+    """Updates the authenticated user's password after verifying their current password.
 
     Validates the current password against the stored hash, hashes the new password,
     persists the change, commits, and logs out the current session

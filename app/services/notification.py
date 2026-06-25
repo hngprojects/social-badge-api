@@ -23,8 +23,7 @@ async def get_notification_preferences(
     session: AsyncSession,
     user_id: UUID,
 ) -> NotificationPreferencesResponse:
-    """
-    Retrieves the notification preferences for a specific user.
+    """Retrieves the notification preferences for a specific user.
 
     Queries the UserNotificationPreference table. If no preferences record exists,
     returns a schema populated with default toggle values.
@@ -54,13 +53,11 @@ async def update_notification_preferences(
     user_id: UUID,
     updates: dict[str, bool],
 ) -> NotificationPreferencesResponse:
-    """
-    Updates or inserts notification preferences for a user.
+    """Updates or inserts notification preferences for a user.
 
-    Performs an upsert (INSERT ... ON CONFLICT DO UPDATE) operation
-    using PostgreSQL dialect extensions to guarantee that the record is either updated
-    or initialized with defaults.
-    Commits the transaction and returns the refreshed preferences.
+    Performs an upsert (INSERT ... ON CONFLICT DO UPDATE) operation using PostgreSQL
+    dialect extensions to guarantee that the record is either updated or initialized
+    with defaults. Commits the transaction and returns the refreshed preferences.
     """
     insert_values: dict[str, object] = {
         "user_id": user_id,
@@ -109,15 +106,13 @@ async def create_notification(
     body: str,
     extra_data: dict | None = None,
 ) -> Notification | None:
-    """
-    Creates a new in-app notification if the user has enabled alerts
-    for that notification type.
+    """Creates a new in-app notification if the user has enabled alerts for that
+    notification type.
 
-    Retrieves the user's preferences, checks the toggle
-    corresponding to the notification type, inserts the Notification record if active,
-    and flushes the database session to assign an ID.
-    Returns the created Notification instance,
-    or None if the notification type is disabled.
+    Retrieves the user's preferences, checks the toggle corresponding to the
+    notification type, inserts the Notification record if active, and flushes the
+    database session to assign an ID. Returns the created Notification instance, or None
+    if the notification type is disabled.
     """
     result = await session.execute(
         select(UserNotificationPreference).where(
@@ -148,11 +143,10 @@ async def list_notifications(
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[Notification], int]:
-    """
-    Retrieves a paginated list of all notifications for a user, sorted newest first.
+    """Retrieves a paginated list of all notifications for a user, sorted newest first.
 
-    Queries both the total count of notifications for the user and the slice
-    matching the limit and page offset.
+    Queries both the total count of notifications for the user and the slice matching
+    the limit and page offset.
     """
     where_clause = Notification.user_id == user_id
 
@@ -188,11 +182,10 @@ async def mark_notification_read(
     user_id: UUID,
     notification_id: UUID,
 ) -> bool:
-    """
-    Marks a single notification as read if it belongs to the specified user.
+    """Marks a single notification as read if it belongs to the specified user.
 
-    Executes an update query, commits the changes, and returns a boolean
-    indicating whether a matching notification row was updated.
+    Executes an update query, commits the changes, and returns a boolean indicating
+    whether a matching notification row was updated.
     """
     result = await session.execute(
         sa_update(Notification)
@@ -210,11 +203,10 @@ async def mark_all_notifications_read(
     session: AsyncSession,
     user_id: UUID,
 ) -> int:
-    """
-    Marks all unread notifications for a user as read.
+    """Marks all unread notifications for a user as read.
 
-    Executes a bulk update query, commits the session,
-    and returns the count of updated rows.
+    Executes a bulk update query, commits the session, and returns the count of updated
+    rows.
     """
     result = await session.execute(
         sa_update(Notification)

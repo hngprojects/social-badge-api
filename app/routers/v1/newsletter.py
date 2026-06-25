@@ -30,10 +30,13 @@ async def subscribe_to_newsletter(
     session: DBSession,
     payload: NewsletterSubscribeRequest,
 ) -> SuccessResponse[NewsletterSubscribeResponse]:
-    """
-    Subscribes an email address to the platform newsletter.
+    """Subscribes an email address to the platform newsletter.
 
-    Creates a new newsletter subscriber record in the database if the email does not exist, or returns a message indicating it is already subscribed. This public endpoint requires no authentication, commits the insert transaction immediately after querying the subscribers table, and is rate-limited to 5 requests per minute per client IP to mitigate spam.
+    Creates a new newsletter subscriber record in the database if the email does not
+    exist, or returns a message indicating it is already subscribed. This public
+    endpoint requires no authentication, commits the insert transaction immediately
+    after querying the subscribers table, and is rate-limited to 5 requests per minute
+    per client IP to mitigate spam.
     """
     subscriber, created = await subscribe(session=session, email=str(payload.email))
     message = (
@@ -68,10 +71,12 @@ async def unsubscribe_from_newsletter(
     session: DBSession,
     payload: NewsletterUnsubscribeRequest,
 ) -> SuccessResponse[None]:
-    """
-    Unsubscribes from the newsletter using the token from the confirmation email.
+    """Unsubscribes from the newsletter using the token from the confirmation email.
 
-    Validates the cryptographically signed unsubscribe token sent via email, queries the database, and deletes or marks the subscriber accordingly. This public endpoint uses the token itself as authorization and is rate-limited to 5 requests per minute per client IP.
+    Validates the cryptographically signed unsubscribe token sent via email, queries the
+    database, and deletes or marks the subscriber accordingly. This public endpoint uses
+    the token itself as authorization and is rate-limited to 5 requests per minute per
+    client IP.
     """
     found = await unsubscribe(session=session, token=payload.token)
     if not found:

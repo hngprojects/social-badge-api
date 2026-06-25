@@ -72,8 +72,7 @@ async def signup(
     redis: Redis,
     payload: SignupRequest,
 ) -> tuple[User, bool]:
-    """
-    Registers a new user, hashes their password, and initiates the email verification
+    """Registers a new user, hashes their password, and initiates the email verification
     process.
 
     Creates a User and an associated AuthProvider record under a single
@@ -133,8 +132,7 @@ async def resend_verification_email(
     redis: Redis,
     payload: ResendVerificationRequest,
 ) -> None:
-    """
-    Generates and sends a new verification token to the user's email if they are not
+    """Generates and sends a new verification token to the user's email if they are not
     verified.
 
     Revokes any previously outstanding verification token for the user in Redis,
@@ -168,8 +166,7 @@ async def reset_password(
     redis: Redis,
     payload: ResetPasswordRequest,
 ) -> None:
-    """
-    Resets a user's password using a valid reset token.
+    """Resets a user's password using a valid reset token.
 
     Verifies the hash of the token against Redis, retrieves the corresponding user ID,
     hashes the new password, updates the user's password hash in the database,
@@ -211,8 +208,7 @@ async def signin(
     payload: LoginRequest,
     request: Request | None = None,
 ) -> tuple[User, str, str]:
-    """
-    Authenticates a user with email and password credentials.
+    """Authenticates a user with email and password credentials.
 
     Checks for active lockout status in Redis first.
     Validates the password using a secure timing-equalized comparison.
@@ -286,13 +282,12 @@ async def signin(
 async def _blacklist_access_token_if_valid(
     redis: Redis, access_token: str | None
 ) -> None:
-    """
-    Decodes the JWT access token and adds its JTI to the Redis blacklist
-    if it is still valid.
+    """Decodes the JWT access token and adds its JTI to the Redis blacklist if it is
+    still valid.
 
     Operates on a best-effort basis, decoding the JWT without enforcing expiration
-    checks to compute the remaining lifetime of the token and storing it in Redis
-    to deny future requests.
+    checks to compute the remaining lifetime of the token and storing it in Redis to
+    deny future requests.
     """
     if not access_token:
         return
@@ -318,13 +313,12 @@ async def _blacklist_access_token_if_valid(
 
 
 async def _send_security_alert_best_effort(email: str, detected_at: datetime) -> None:
-    """
-    Dispatches a security alert email to the user regarding potential session
+    """Dispatches a security alert email to the user regarding potential session
     hijack/reuse.
 
-    Errors during the email transmission are swallowed and logged
-    to prevent interrupting concurrent operations, prioritizing security revocation
-    over email delivery success.
+    Errors during the email transmission are swallowed and logged to prevent
+    interrupting concurrent operations, prioritizing security revocation over email
+    delivery success.
     """
     try:
         await send_security_alert_email(email, detected_at)
@@ -342,8 +336,7 @@ async def refresh_session(
     access_token: str | None,
     request: Request | None = None,
 ) -> tuple[str, str]:
-    """
-    Rotates the refresh token and issues a new access token for a valid session.
+    """Rotates the refresh token and issues a new access token for a valid session.
 
     Verifies the provided refresh token hash against the database.
     Performs reuse detection:
@@ -453,12 +446,11 @@ async def logout_session(
     raw_refresh_token: str | None,
     access_token: str | None,
 ) -> None:
-    """
-    Terminates a user session by revoking the refresh token
-    and blacklisting the access token.
+    """Terminates a user session by revoking the refresh token and blacklisting the
+    access token.
 
-    Updates the database record of the refresh token matching the provided hash
-    to be revoked, commits the change, and blacklists the current access token in Redis.
+    Updates the database record of the refresh token matching the provided hash to be
+    revoked, commits the change, and blacklists the current access token in Redis.
     """
     if raw_refresh_token:
         token_hash_str = await asyncio.to_thread(hash_token, raw_refresh_token)
@@ -474,8 +466,7 @@ async def logout_session(
 
 
 def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> None:
-    """
-    Helper function to configure a secure, HTTP-only cookie on the FastAPI Response.
+    """Helper function to configure a secure, HTTP-only cookie on the FastAPI Response.
 
     Configures secure flags, samesite policies, cookie lifetime, and domain parameters
     using values set in the application configuration.
@@ -492,8 +483,7 @@ def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> 
 
 
 def set_access_cookie(response: Response, access_token: str) -> None:
-    """
-    Sets the secure HTTP-only access token cookie on the outgoing response.
+    """Sets the secure HTTP-only access token cookie on the outgoing response.
 
     Uses settings.ACCESS_COOKIE and calculates max_age using
     settings.ACCESS_TOKEN_EXPIRE_MINUTES.
@@ -507,8 +497,7 @@ def set_access_cookie(response: Response, access_token: str) -> None:
 
 
 def set_refresh_cookie(response: Response, refresh_token: str) -> None:
-    """
-    Sets the secure HTTP-only refresh token cookie on the outgoing response.
+    """Sets the secure HTTP-only refresh token cookie on the outgoing response.
 
     Uses settings.REFRESH_COOKIE and calculates max_age using
     settings.REFRESH_TOKEN_EXPIRE_DAYS.
@@ -522,8 +511,7 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 
 async def check_lockout(redis: Redis, identifier: str) -> None:
-    """
-    Verifies whether the identifier has exceeded the maximum allowed failed login
+    """Verifies whether the identifier has exceeded the maximum allowed failed login
     attempts.
 
     Checks the lockout count in Redis. If locked, queries the key's TTL
@@ -542,11 +530,10 @@ async def check_lockout(redis: Redis, identifier: str) -> None:
 
 
 async def increment_failed_attempts(redis: Redis, identifier: str) -> int:
-    """
-    Increments the failed login attempt counter in Redis for the given identifier.
+    """Increments the failed login attempt counter in Redis for the given identifier.
 
-    Sets the key expiration window if it is the first failed attempt
-    in the current cycle. Returns the new incremented count.
+    Sets the key expiration window if it is the first failed attempt in the current
+    cycle. Returns the new incremented count.
     """
     key = f"{settings.FAILED_LOGIN_PREFIX}{identifier}"
     count = await redis.incr(key)
@@ -557,9 +544,8 @@ async def increment_failed_attempts(redis: Redis, identifier: str) -> int:
 
 
 async def reset_attempts(redis: Redis, identifier: str) -> None:
-    """
-    Deletes the failed login attempts counter from Redis for the specified identifier.
-    """
+    """Deletes the failed login attempts counter from Redis for the specified
+    identifier."""
     await redis.delete(f"{settings.FAILED_LOGIN_PREFIX}{identifier}")
 
 
@@ -568,15 +554,13 @@ async def request_password_reset(
     redis: Redis,
     payload: ForgotPasswordRequest,
 ) -> None:
-    """
-    Generates a secure password reset token and sends it via email if the user exists.
+    """Generates a secure password reset token and sends it via email if the user
+    exists.
 
-    If the email matches a registered user, generates a random token,
-    stores its hash mapped to the user's ID in Redis with an expiration window,
-    and sends a password reset email.
-    If the user does not exist, exits silently to prevent user enumeration.
+    If the email matches a registered user, generates a random token, stores its hash
+    mapped to the user's ID in Redis with an expiration window, and sends a password
+    reset email. If the user does not exist, exits silently to prevent user enumeration.
     """
-
     result = await session.execute(select(User).where(User.email == payload.email))
     user = result.scalars().first()
 
@@ -590,13 +574,11 @@ async def request_password_reset(
 
 
 async def build_google_auth_url(redis: Redis) -> str:
-    """
-    Generates the Google OAuth authorization URL to initiate the social sign-in flow.
+    """Generates the Google OAuth authorization URL to initiate the social sign-in flow.
 
     Creates a random OAuth state parameter, caches it in Redis to prevent CSRF attacks,
     and returns the fully encoded URL containing client parameters, scope, and state.
     """
-
     state, _ = generate_token()
     await store_google_oauth_state(redis, state)
 
@@ -618,8 +600,8 @@ async def authenticate_with_google(
     code: str,
     state: str,
 ) -> tuple[User, bool]:
-    """
-    Processes the Google OAuth callback by verifying the state and exchanging the code.
+    """Processes the Google OAuth callback by verifying the state and exchanging the
+    code.
 
     Verifies that the CSRF state exists in Redis,
     performs the authorization code exchange with Google,
@@ -630,7 +612,6 @@ async def authenticate_with_google(
         GoogleOAuthError: If state is invalid, exchange/fetch fails,
         or subject validation fails.
     """
-
     state_is_valid = await get_google_oauth_state(redis, state)
     if not state_is_valid:
         raise GoogleOAuthError("Invalid or expired Google OAuth state")
@@ -645,8 +626,7 @@ async def authenticate_with_google(
 
 
 async def _exchange_google_code(code: str) -> dict[str, str | None]:
-    """
-    Exchanges a Google OAuth authorization code for access and ID tokens.
+    """Exchanges a Google OAuth authorization code for access and ID tokens.
 
     Sends a POST request to Google's token endpoint and handles network/HTTP errors.
 
@@ -691,8 +671,7 @@ async def _exchange_google_code(code: str) -> dict[str, str | None]:
 
 
 async def _fetch_google_user_info(access_token: str) -> dict[str, str | bool | None]:
-    """
-    Fetches user profile data from Google using the retrieved access token.
+    """Fetches user profile data from Google using the retrieved access token.
 
     Queries Google's user info endpoint and validates that a stable account identifier
     (sub), a verified email address, and a display name are present in the response.
@@ -700,6 +679,7 @@ async def _fetch_google_user_info(access_token: str) -> dict[str, str | bool | N
     Raises:
         GoogleOAuthError: If the user info lookup fails or critical fields are missing.
     """
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(
@@ -749,8 +729,7 @@ async def _fetch_google_user_info(access_token: str) -> dict[str, str | bool | N
 def _validate_google_subject_consistency(
     id_token: str | None, userinfo_subject: str | bool | None
 ) -> None:
-    """
-    Verifies that the subject claim in the ID token matches the subject from the user
+    """Verifies that the subject claim in the ID token matches the subject from the user
     info payload.
 
     Skips validation if no ID token is present.
@@ -770,9 +749,8 @@ def _validate_google_subject_consistency(
 
 
 def _extract_google_id_token_subject(id_token: str) -> str:
-    """
-    Decodes the payload segment of the Google ID token JWT and extracts the
-    subject claim ('sub').
+    """Decodes the payload segment of the Google ID token JWT and extracts the subject
+    claim ('sub').
 
     Performs base64 urlsafe decoding and JSON parsing of the raw segment
     without full signature verification.
@@ -809,8 +787,7 @@ async def _upsert_google_user(
     session: AsyncSession,
     user_info: dict[str, str | bool | None],
 ) -> tuple[User, bool]:
-    """
-    Queries, links, or creates a User and AuthProvider for Google social login.
+    """Queries, links, or creates a User and AuthProvider for Google social login.
 
     Checks if a Google AuthProvider exists for the subject.
     If found, returns the linked user. If not, checks for a user with the same email.
@@ -822,7 +799,6 @@ async def _upsert_google_user(
         GoogleOAuthError: If a conflict arises (e.g. email exists
         but password account is unverified).
     """
-
     google_subject = str(user_info["sub"])
     email = str(user_info["email"])
     name = str(user_info["name"])
@@ -894,6 +870,7 @@ async def _upsert_google_user(
     await session.refresh(user)
     return user, is_new_user
 
+
 async def list_user_sessions(
     session: AsyncSession,
     user_id: UUID,
@@ -901,13 +878,11 @@ async def list_user_sessions(
     page: int = 1,
     limit: int = 20,
 ) -> SessionListResponse:
-    """
-    Queries and returns active, non-revoked, non-expired refresh toke sessions
-    for a user.
+    """Queries and returns active, non-revoked, non-expired refresh toke sessions for a
+    user.
 
-    Retrieves both the total count of active sessions
-    and a paginated list of session details.
-    Identifies which session is the current one based on the family ID.
+    Retrieves both the total count of active sessions and a paginated list of session
+    details. Identifies which session is the current one based on the family ID.
     """
     now = datetime.now(UTC)
 
@@ -962,12 +937,10 @@ async def _resolve_current_family_id(
     session: AsyncSession,
     raw_refresh_token: str | None,
 ) -> UUID | None:
-    """
-    Retrieves the family ID associated with the provided raw refresh token.
+    """Retrieves the family ID associated with the provided raw refresh token.
 
-    Hashes the token and queries the database for an active, non-revoked,
-    non-expired record.
-    Returns None if no matching token is found.
+    Hashes the token and queries the database for an active, non-revoked, non-expired
+    record. Returns None if no matching token is found.
     """
     if not raw_refresh_token:
         return None
@@ -990,13 +963,12 @@ async def revoke_all_user_sessions(
     user_id: UUID,
     access_token: str | None,
 ) -> int:
-    """
-    Revokes all active refresh tokens for the user in the database
-    and blacklists the current access token.
+    """Revokes all active refresh tokens for the user in the database and blacklists the
+    current access token.
 
-    Updates all non-revoked, non-expired refresh token rows for the user
-    to be revoked, returning the number of affected sessions.
-    Commits the transaction and blacklists the active access token in Redis.
+    Updates all non-revoked, non-expired refresh token rows for the user to be revoked,
+    returning the number of affected sessions. Commits the transaction and blacklists
+    the active access token in Redis.
     """
     now = datetime.now(UTC)
     result = await session.execute(

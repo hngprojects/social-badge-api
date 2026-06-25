@@ -15,11 +15,10 @@ if TYPE_CHECKING:
 
 
 class UserNotificationPreference(Base):
-    """
-    Database representation of user-specific notification preferences.
+    """Database representation of user-specific notification preferences.
 
-    Configures opt-in/opt-out toggles for various email alerts, daily digests,
-    and weekly reporting.
+    Configures opt-in/opt-out toggles for various email alerts, daily digests, and
+    weekly reporting.
     """
 
     __tablename__ = "user_notification_preferences"
@@ -59,11 +58,9 @@ class UserNotificationPreference(Base):
 
 
 class NotificationType(enum.StrEnum):
-    """
-    Enumeration of supported notification types within the system.
+    """Enumeration of supported notification types within the system.
 
-    Defines categories such as badge creation alerts, daily digests,
-    and weekly reports.
+    Defines categories such as badge creation alerts, daily digests, and weekly reports.
     """
 
     BADGE_CREATION = "badge_alert"
@@ -72,11 +69,10 @@ class NotificationType(enum.StrEnum):
 
 
 class Notification(Base):
-    """
-    Database representation of an individual user notification.
+    """Database representation of an individual user notification.
 
-    Stores the notification type, message title, body text, read/unread status,
-    and optional contextual metadata (extra data) for system alerts and communications.
+    Stores the notification type, message title, body text, read/unread status, and
+    optional contextual metadata (extra data) for system alerts and communications.
     """
 
     __tablename__ = "notifications"

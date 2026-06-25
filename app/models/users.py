@@ -15,12 +15,11 @@ if TYPE_CHECKING:
 
 
 class User(Base):
-    """
-    Database representation of an authenticated user.
+    """Database representation of an authenticated user.
 
-    Manages user profile fields, authentication states,
-    and relationships to associated entities such as authentication providers,
-    active sessions, badges, roles, and notifications.
+    Manages user profile fields, authentication states, and relationships to associated
+    entities such as authentication providers, active sessions, badges, roles, and
+    notifications.
     """
 
     __tablename__ = "users"

@@ -11,8 +11,7 @@ from app.core.logging import RequestContextLogger
 
 
 def _client_ip(request: Request) -> str:
-    """
-    Helper to extract client IP address from request headers or connection metadata.
+    """Helper to extract client IP address from request headers or connection metadata.
 
     Supports X-Forwarded-For, X-Real-IP, and ASGI request client host properties.
     """
@@ -24,22 +23,20 @@ def _client_ip(request: Request) -> str:
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """
-    FastAPI/Starlette middleware to capture, format, and log API request
-    and response details.
+    """FastAPI/Starlette middleware to capture, format, and log API request and response
+    details.
 
-    Generates a unique request-id per request to associate related logs
-    in multi-tenant contexts.
+    Generates a unique request-id per request to associate related logs in multi-tenant
+    contexts.
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """
-        Intercepts the incoming HTTP request, logs start details,
-        executes down-chain handlers, and logs completion metrics.
+        """Intercepts the incoming HTTP request, logs start details, executes down-chain
+        handlers, and logs completion metrics.
 
-        Uses RequestContextLogger context manager to tie the unique request ID
-        to all logs generated during request resolution. Sanitizes query parameters
-        and headers to avoid leakage.
+        Uses RequestContextLogger context manager to tie the unique request ID to all
+        logs generated during request resolution. Sanitizes query parameters and headers
+        to avoid leakage.
         """
         request_id = uuid.uuid4().hex
         client_ip = _client_ip(request)

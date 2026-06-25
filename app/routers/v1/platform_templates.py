@@ -99,10 +99,12 @@ async def list_templates(
         description="Items per page",
     ),
 ) -> SuccessResponse[PlatformTemplateListResponse]:
-    """
-    Returns active platform templates with pagination and an optional category filter.
+    """Returns active platform templates with pagination and an optional category
+    filter.
 
-    Fetches a paginated set of active platform templates from the database, utilizing OFFSET and LIMIT constraints. This is a public gallery endpoint requiring no authentication and is rate-limited to 60 requests per minute per IP address.
+    Fetches a paginated set of active platform templates from the database, utilizing
+    OFFSET and LIMIT constraints. This is a public gallery endpoint requiring no
+    authentication and is rate-limited to 60 requests per minute per IP address.
     """
     normalised_category = category.strip().lower() if category is not None else None
     if normalised_category == "":
@@ -181,10 +183,12 @@ async def get_badge(
     session: DBSession,
     id: UUID,
 ) -> SuccessResponse[PlatformTemplateResponse]:
-    """
-    Retrieves a single active platform template by its unique ID.
+    """Retrieves a single active platform template by its unique ID.
 
-    Fetches the details and canvas data of the template to populate layout design previews. This is a public endpoint requiring no authentication, performs a fast single-row primary key database lookup, and is rate-limited to 60 requests per minute per IP address.
+    Fetches the details and canvas data of the template to populate layout design
+    previews. This is a public endpoint requiring no authentication, performs a fast
+    single-row primary key database lookup, and is rate-limited to 60 requests per
+    minute per IP address.
     """
     try:
         template = await get_platform_template(session, id)

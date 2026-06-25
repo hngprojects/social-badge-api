@@ -15,8 +15,7 @@ async def create_platform_template(
     thumbnail_url: str | None,
     is_active: bool,
 ) -> PlatformTemplate:
-    """
-    Creates a new platform badge template inside a database transaction.
+    """Creates a new platform badge template inside a database transaction.
 
     Inserts a PlatformTemplate record, commits the session, and refreshes the instance
     to populate database-generated fields (like IDs and timestamps).
@@ -40,11 +39,10 @@ async def list_platform_templates(
     limit: int = 100,
     offset: int = 0,
 ) -> list[PlatformTemplate]:
-    """
-    Retrieves a paginated list of platform templates from the database.
+    """Retrieves a paginated list of platform templates from the database.
 
-    The templates are sorted chronologically by creation time.
-    Supports optional filtering by template category.
+    The templates are sorted chronologically by creation time. Supports optional
+    filtering by template category.
     """
     stmt = select(PlatformTemplate)
     if category is not None:
@@ -57,11 +55,10 @@ async def list_platform_templates(
 async def get_platform_template(
     session: AsyncSession, template_id: UUID
 ) -> PlatformTemplate | None:
-    """
-    Retrieves a single platform template by its unique identifier.
+    """Retrieves a single platform template by its unique identifier.
 
-    Queries the database directly using the session's get method,
-    returning None if the template is not found.
+    Queries the database directly using the session's get method, returning None if the
+    template is not found.
     """
     return await session.get(PlatformTemplate, template_id)
 
@@ -75,8 +72,7 @@ async def update_platform_template(
     thumbnail_url: str | None,
     is_active: bool | None,
 ) -> PlatformTemplate:
-    """
-    Updates the fields of an existing platform template.
+    """Updates the fields of an existing platform template.
 
     Modifies attributes on the template object if the provided argument is not None,
     commits the session transaction, and refreshes the database instance.
@@ -99,8 +95,7 @@ async def update_platform_template(
 async def delete_platform_template(
     session: AsyncSession, template: PlatformTemplate
 ) -> None:
-    """
-    Removes a platform template from the database.
+    """Removes a platform template from the database.
 
     Deletes the template instance using the session and commits the transaction.
     """

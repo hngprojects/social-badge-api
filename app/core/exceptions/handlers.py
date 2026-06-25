@@ -15,16 +15,13 @@ from app.schemas.response import ErrorResponse
 
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """
-    Catches, logs, and processes all unhandled exceptions in the
-    application.
+    """Catches, logs, and processes all unhandled exceptions in the application.
 
-    Acts as the primary FastAPI error interceptor. Inspects exception types
-    (such as SQLAlchemy database errors, RequestValidationErrors,
-    RateLimitExceeded events, or Starlette HTTPExceptions),
-    extracts the traceback or SQL structure,
-    sanitizes sensitive content for logs via Loguru, and returns a unified JSONResponse
-    wrapping an ErrorResponse schema to avoid exposing system internals.
+    Acts as the primary FastAPI error interceptor. Inspects exception types (such as
+    SQLAlchemy database errors, RequestValidationErrors, RateLimitExceeded events, or
+    Starlette HTTPExceptions), extracts the traceback or SQL structure, sanitizes
+    sensitive content for logs via Loguru, and returns a unified JSONResponse wrapping
+    an ErrorResponse schema to avoid exposing system internals.
     """
     exc_type = type(exc).__name__
 
@@ -120,12 +117,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """
-    Registers the centralized global exception handler.
+    """Registers the centralized global exception handler.
 
     Binds handlers for RateLimitExceeded, StarletteHTTPException,
-    RequestValidationError, and the base Exception class
-    so that all application errors yield standard JSON responses.
+    RequestValidationError, and the base Exception class so that all application errors
+    yield standard JSON responses.
     """
     app.add_exception_handler(RateLimitExceeded, global_exception_handler)
     app.add_exception_handler(StarletteHTTPException, global_exception_handler)

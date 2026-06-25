@@ -29,19 +29,13 @@ class EmailNotVerifiedError(Exception):
 
 
 class EmailAlreadyVerifiedError(Exception):
-    """
-    Raised when a resend-verification is requested for an
-    already-verified email.
-    """
+    """Raised when a resend-verification is requested for an already-verified email."""
 
     pass
 
 
 class AccountLockedError(Exception):
-    """
-    Raised when a login attempt is made against a locked account (HTTP
-    423).
-    """
+    """Raised when a login attempt is made against a locked account (HTTP 423)."""
 
     pass
 
@@ -72,10 +66,7 @@ class PlatformTemplateNotFoundError(Exception):
 
 
 class PlatformTemplateNotActiveError(Exception):
-    """
-    Raised when attempting to create a badge from an inactive platform
-    template.
-    """
+    """Raised when attempting to create a badge from an inactive platform template."""
 
     pass
 
@@ -111,12 +102,10 @@ class PublicBadgeNotFoundError(Exception):
 
 
 class BadgeRenderError(Exception):
-    """
-    Raised when badge rendering fails in a way that prevents any output.
+    """Raised when badge rendering fails in a way that prevents any output.
 
-        Optional asset failures (logo, participant photo) are non-fatal and
-        log a
-        warning instead of raising this exception.
+    Optional asset failures (logo, participant photo) are non-fatal and log a warning
+    instead of raising this exception.
     """
 
     pass

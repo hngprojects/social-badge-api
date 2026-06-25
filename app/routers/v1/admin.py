@@ -46,12 +46,14 @@ async def create_template(
     session: DBSession,
     payload: CreatePlatformTemplateRequest,
 ) -> SuccessResponse[PlatformTemplateResponse]:
-    """
-    Creates a new platform design template available to organisers for badge layout customization.
+    """Creates a new platform design template available to organisers for badge layout
+    customization.
 
-    This endpoint requires admin authorization privileges and is limited to users with the 'admin' role. The handler performs an INSERT operation on the platform templates database table and commits the transaction immediately, subject to a rate limit of 30 requests per minute per IP.
+    This endpoint requires admin authorization privileges and is limited to users with
+    the 'admin' role. The handler performs an INSERT operation on the platform templates
+    database table and commits the transaction immediately, subject to a rate limit of
+    30 requests per minute per IP.
     """
-
     template = await create_platform_template(
         session=session,
         title=payload.title,
@@ -103,12 +105,13 @@ async def update_template(
     template_id: UUID,
     payload: UpdatePlatformTemplateRequest,
 ) -> SuccessResponse[PlatformTemplateResponse]:
-    """
-    Updates the details of an existing platform design template.
+    """Updates the details of an existing platform design template.
 
-    Modifies attributes such as layout variables, category, title, or active state for a template queryable by its ID. It requires admin authorization, queries the database for the template, updates target fields, and commits the transaction with a rate limit of 30 requests per minute per IP.
+    Modifies attributes such as layout variables, category, title, or active state for a
+    template queryable by its ID. It requires admin authorization, queries the database
+    for the template, updates target fields, and commits the transaction with a rate
+    limit of 30 requests per minute per IP.
     """
-
     template = await get_platform_template(session=session, template_id=template_id)
     if template is None:
         raise HTTPException(
@@ -166,12 +169,12 @@ async def delete_template(
     session: DBSession,
     template_id: UUID,
 ) -> SuccessResponse[None]:
-    """
-    Deletes a platform design template by removing its record from the database.
+    """Deletes a platform design template by removing its record from the database.
 
-    Requires admin authorization privileges to proceed. The handler executes a database fetch followed by a DELETE query under a rate limit of 30 requests per minute per IP.
+    Requires admin authorization privileges to proceed. The handler executes a database
+    fetch followed by a DELETE query under a rate limit of 30 requests per minute per
+    IP.
     """
-
     template = await get_platform_template(session=session, template_id=template_id)
     if template is None:
         raise HTTPException(
@@ -196,10 +199,11 @@ async def list_templates(
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> SuccessResponse[list[PlatformTemplateResponse]]:
-    """
-    Lists platform design templates, optionally filtered by category.
+    """Lists platform design templates, optionally filtered by category.
 
-    Retrieves a listing of platform templates for administration and management. This query executes with offset and limit pagination over the platform templates table, requires admin authorization, and is rate-limited to 30 requests per minute per IP.
+    Retrieves a listing of platform templates for administration and management. This
+    query executes with offset and limit pagination over the platform templates table,
+    requires admin authorization, and is rate-limited to 30 requests per minute per IP.
     """
     templates = await list_platform_templates(
         session=session, category=category, limit=limit, offset=offset
@@ -236,12 +240,12 @@ async def get_template(
     session: DBSession,
     template_id: UUID,
 ) -> SuccessResponse[PlatformTemplateResponse]:
-    """
-    Retrieves the full design configuration details of a platform template by its ID.
+    """Retrieves the full design configuration details of a platform template by its ID.
 
-    This operation requires admin authorization privileges and executes a single-row database read using the primary key. It is rate-limited to 30 requests per minute per IP.
+    This operation requires admin authorization privileges and executes a single-row
+    database read using the primary key. It is rate-limited to 30 requests per minute
+    per IP.
     """
-
     template = await get_platform_template(session=session, template_id=template_id)
     if template is None:
         raise HTTPException(

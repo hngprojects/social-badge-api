@@ -8,11 +8,10 @@ from app.core.config import settings
 
 
 def is_testing_environment() -> bool:
-    """
-    Checks whether the application is running inside a test environment.
+    """Checks whether the application is running inside a test environment.
 
-    Verifies the presence of pytest in sys.modules or environment variables
-    to decide on using an in-memory rate limiting database instead of Redis.
+    Verifies the presence of pytest in sys.modules or environment variables to decide on
+    using an in-memory rate limiting database instead of Redis.
     """
     return (
         "pytest" in sys.modules

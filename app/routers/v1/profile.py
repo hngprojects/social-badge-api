@@ -44,10 +44,12 @@ IMAGE_MAGIC_BYTES = {
 
 
 def _validate_image_content(content: bytes) -> str:
-    """
-    Validates image content by checking magic bytes for supported formats (JPEG, PNG, GIF).
+    """Validates image content by checking magic bytes for supported formats (JPEG, PNG,
+    GIF).
 
-    This internal utility function inspects the header bytes of the uploaded file and inherits context from calling endpoints. It uses a very fast in-memory prefix comparison with no rate limiting applied.
+    This internal utility function inspects the header bytes of the uploaded file and
+    inherits context from calling endpoints. It uses a very fast in-memory prefix
+    comparison with no rate limiting applied.
     """
     if len(content) < 4:
         raise HTTPException(
@@ -66,10 +68,11 @@ def _validate_image_content(content: bytes) -> str:
 
 
 async def _read_file_with_size_check(file: UploadFile, max_size: int) -> bytes:
-    """
-    Reads incoming file streams in chunks while enforcing size limits.
+    """Reads incoming file streams in chunks while enforcing size limits.
 
-    Aborts reading early if the accumulated size exceeds the limit, preventing excessively large files from loading into server memory. This internal utility function uses no authentication or rate limiting.
+    Aborts reading early if the accumulated size exceeds the limit, preventing
+    excessively large files from loading into server memory. This internal utility
+    function uses no authentication or rate limiting.
     """
     chunks: list[bytes] = []
     total_size = 0
@@ -110,12 +113,12 @@ async def get_profile(
     request: Request,
     current_user: CurrentUser,
 ) -> SuccessResponse[UserResponse]:
-    """
-    Retrieves the authenticated organiser's profile details.
+    """Retrieves the authenticated organiser's profile details.
 
-    Requires authenticated session access. It introduces extremely low overhead by returning the user entity already loaded by the dependencies and is rate-limited to 10 requests per minute per IP.
+    Requires authenticated session access. It introduces extremely low overhead by
+    returning the user entity already loaded by the dependencies and is rate-limited to
+    10 requests per minute per IP.
     """
-
     return SuccessResponse(
         message="Profile retrieved successfully",
         data=UserResponse.model_validate(current_user),
@@ -147,12 +150,12 @@ async def update_user_profile(
     current_user: CurrentUser,
     payload: UpdateProfileRequest,
 ) -> SuccessResponse[UserResponse]:
-    """
-    Updates profile details of the authenticated organiser.
+    """Updates profile details of the authenticated organiser.
 
-    Modifies editable details such as names, email, and roles. This endpoint requires authenticated session access, executes database update queries on the users table immediately, and is rate-limited to 5 requests per minute per IP.
+    Modifies editable details such as names, email, and roles. This endpoint requires
+    authenticated session access, executes database update queries on the users table
+    immediately, and is rate-limited to 5 requests per minute per IP.
     """
-
     if (
         payload.first_name is None
         and payload.last_name is None
@@ -205,12 +208,13 @@ async def delete_user_profile(
     redis: RedisClient,
     current_user: CurrentUser,
 ) -> SuccessResponse[DeleteProfileResponse]:
-    """
-    Permanently deletes the user profile and all associated data.
+    """Permanently deletes the user profile and all associated data.
 
-    Removes the user record, associated refresh tokens, and preferences, and deletes browser session cookies. This endpoint requires authenticated session access, runs heavy cascading deletes across multiple database tables, and is rate-limited to 5 requests per minute per IP.
+    Removes the user record, associated refresh tokens, and preferences, and deletes
+    browser session cookies. This endpoint requires authenticated session access, runs
+    heavy cascading deletes across multiple database tables, and is rate-limited to 5
+    requests per minute per IP.
     """
-
     user_id = current_user.id
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
@@ -274,12 +278,13 @@ async def upload_profile_photo_endpoint(
         ..., description="Image file (JPEG, PNG, GIF)"
     ),
 ) -> SuccessResponse[UserResponse]:
-    """
-    Uploads or updates the authenticated user's profile photo.
+    """Uploads or updates the authenticated user's profile photo.
 
-    Validates file size and format, executes outgoing Cloudinary network calls to save the new image and delete the old asset, and updates the user's photo URL. This endpoint requires authenticated session access, involves block-wise stream reading, and is rate-limited to 10 requests per minute per IP.
+    Validates file size and format, executes outgoing Cloudinary network calls to save
+    the new image and delete the old asset, and updates the user's photo URL. This
+    endpoint requires authenticated session access, involves block-wise stream reading,
+    and is rate-limited to 10 requests per minute per IP.
     """
-
     content = await _read_file_with_size_check(file, MAX_FILE_SIZE)
 
     actual_mime_type = _validate_image_content(content)
@@ -334,12 +339,13 @@ async def remove_profile_photo_endpoint(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[UserResponse]:
-    """
-    Removes the authenticated user's profile photo.
+    """Removes the authenticated user's profile photo.
 
-    Deletes the profile image from Cloudinary and clears the photo URL in the database. This endpoint requires authenticated session access, performs a remote network delete request and database write transaction, and is rate-limited to 10 requests per minute per IP.
+    Deletes the profile image from Cloudinary and clears the photo URL in the database.
+    This endpoint requires authenticated session access, performs a remote network
+    delete request and database write transaction, and is rate-limited to 10 requests
+    per minute per IP.
     """
-
     updated_user = await remove_profile_photo(session=session, user=current_user)
 
     logger.info("Removed profile photo for user %s", current_user.id)
@@ -379,12 +385,13 @@ async def change_user_password(
     current_user: CurrentUser,
     payload: ChangePasswordRequest,
 ) -> SuccessResponse[None]:
-    """
-    Changes the authenticated user's password.
+    """Changes the authenticated user's password.
 
-    Verifies the current password, performs CPU-heavy password hashing to encrypt the new password, updates the database, and invalidates other active sessions. This endpoint requires authenticated session access, runs a write transaction on the database, and is rate-limited to 5 requests per minute per IP.
+    Verifies the current password, performs CPU-heavy password hashing to encrypt the
+    new password, updates the database, and invalidates other active sessions. This
+    endpoint requires authenticated session access, runs a write transaction on the
+    database, and is rate-limited to 5 requests per minute per IP.
     """
-
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     try:

@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def seed_roles(admin_emails: list[str] | None = None) -> None:
-    """
-    Populates the database with default application roles.
+    """Populates the database with default application roles.
 
     Creates specified roles if they do not already exist, and associates any existing
     users matching the provided administrator email addresses with the 'admin' role.
@@ -82,13 +81,13 @@ async def seed_roles(admin_emails: list[str] | None = None) -> None:
 
 
 async def seed_platform_templates() -> None:
-    """
-    Seeds the database with platform-wide default templates.
+    """Seeds the database with platform-wide default templates.
 
-    Inserts predefined templates that are not currently present,
-    removes deprecated templates, and updates existing templates to match
-    the current template definitions and layouts.
+    Inserts predefined templates that are not currently present, removes deprecated
+    templates, and updates existing templates to match the current template definitions
+    and layouts.
     """
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(PlatformTemplate))
         existing: dict[str, PlatformTemplate] = {
@@ -178,8 +177,7 @@ async def seed_platform_templates() -> None:
 
 
 async def main() -> None:
-    """
-    Runs the database seeding process for default roles and platform templates.
+    """Runs the database seeding process for default roles and platform templates.
 
     Configures logging and calls the individual seeders sequentially.
     """

@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_cloudinary() -> None:
-    """
-    Initializes the Cloudinary client configuration settings.
+    """Initializes the Cloudinary client configuration settings.
 
     Verifies that all required Cloudinary API credentials exist in settings,
     and raises an exception if any credentials are missing.
@@ -41,8 +40,7 @@ def _configure_cloudinary() -> None:
 
 
 def _upload_sync(data: bytes, filename: str) -> str:
-    """
-    Uploads image bytes synchronously to Cloudinary.
+    """Uploads image bytes synchronously to Cloudinary.
 
     Configures Cloudinary credentials, uploads the binary payload,
     overwrites existing assets if the filename matches,
@@ -68,8 +66,7 @@ def _upload_sync(data: bytes, filename: str) -> str:
 
 
 def _delete_sync(public_id: str) -> None:
-    """
-    Destroys a specified asset synchronously on Cloudinary.
+    """Destroys a specified asset synchronously on Cloudinary.
 
     Initializes credentials, executes the destruction call, and invalidates CDN caches.
 
@@ -84,8 +81,8 @@ def _delete_sync(public_id: str) -> None:
 
 
 async def upload_logo(data: bytes) -> tuple[str, str]:
-    """
-    Asynchronously uploads a logo image to Cloudinary using a backgroun thread executor.
+    """Asynchronously uploads a logo image to Cloudinary using a backgroun thread
+    executor.
 
     Generates a unique random filename, performs a thread-safe synchronous upload,
     and returns a tuple containing the secure URL and the generated public ID.
@@ -100,8 +97,7 @@ async def upload_logo(data: bytes) -> tuple[str, str]:
 
 
 async def delete_logo(public_id: str) -> None:
-    """
-    Asynchronously deletes a logo from Cloudinary using a background thread executor.
+    """Asynchronously deletes a logo from Cloudinary using a background thread executor.
 
     Raises:
         CloudinaryUploadError: If the delete operation fails.
@@ -110,9 +106,8 @@ async def delete_logo(public_id: str) -> None:
 
 
 async def delete_asset(public_id: str) -> None:
-    """
-    Asynchronously deletes any Cloudinary asset using its public identifier
-    in a background thread.
+    """Asynchronously deletes any Cloudinary asset using its public identifier in a
+    background thread.
 
     Raises:
         CloudinaryUploadError: If the delete operation fails.

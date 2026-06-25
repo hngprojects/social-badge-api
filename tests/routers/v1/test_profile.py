@@ -264,7 +264,7 @@ async def test_update_profile_role_persists(
     client: AsyncClient,
     profile_user: dict[str, str],
 ) -> None:
-    """role is returned in the GET /profile response after being set."""
+    """Role is returned in the GET /profile response after being set."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
     await client.put("/api/v1/profile", json={"role": "Designer"})
@@ -278,9 +278,9 @@ async def test_update_profile_role_cleared_with_empty_string(
     client: AsyncClient,
     profile_user: dict[str, str],
 ) -> None:
-    """Whitespace-only role is normalised to None by the validator; because no
-    other field is provided the request is rejected with 400 (same behaviour
-    as sending a whitespace-only first_name alone)."""
+    """Whitespace-only role is normalised to None by the validator; because no other
+    field is provided the request is rejected with 400 (same behaviour as sending a
+    whitespace-only first_name alone)."""
     await client.post("/api/v1/auth/login", json=profile_user)
 
     response = await client.put("/api/v1/profile", json={"role": "   "})
@@ -469,7 +469,6 @@ async def test_delete_profile_rate_limit(
     profile_user: dict[str, str],
 ) -> None:
     """Test rate limiting on DELETE /profile endpoint."""
-
     # Make multiple login attempts and delete attempts
     for _ in range(5):
         # Create a new test user for each iteration
@@ -746,8 +745,8 @@ async def test_remove_profile_photo_no_photo_is_noop(
     client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """Removing a photo when none is set succeeds silently
-    without calling Cloudinary."""
+    """Removing a photo when none is set succeeds silently without calling
+    Cloudinary."""
     user = User(
         first_name="NoPhoto",
         last_name="Remove",

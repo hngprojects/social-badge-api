@@ -49,10 +49,12 @@ async def get_preferences(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[NotificationPreferencesResponse]:
-    """
-    Retrieves the notification preferences for the authenticated organiser.
+    """Retrieves the notification preferences for the authenticated organiser.
 
-    Fetches toggles and state preferences indicating whether the organiser has opted in to daily digests, weekly reports, or instant notifications. This endpoint requires an active user session, queries the database user preferences table by user ID, and is rate-limited to 30 requests per minute per IP.
+    Fetches toggles and state preferences indicating whether the organiser has opted in
+    to daily digests, weekly reports, or instant notifications. This endpoint requires
+    an active user session, queries the database user preferences table by user ID, and
+    is rate-limited to 30 requests per minute per IP.
     """
     prefs = await get_notification_preferences(
         session=session,
@@ -92,10 +94,12 @@ async def patch_preferences(
     current_user: CurrentUser,
     payload: UpdateNotificationPreferencesRequest | None = None,
 ) -> SuccessResponse[NotificationPreferencesResponse]:
-    """
-    Partially updates the notification preferences for the authenticated organiser.
+    """Partially updates the notification preferences for the authenticated organiser.
 
-    Modifies specified preference fields (such as daily digest status) without changing other variables. This handler requires an active user session, validates the inputs, writes the changes to the user preferences table in the database, and is rate-limited to 30 requests per minute per IP.
+    Modifies specified preference fields (such as daily digest status) without changing
+    other variables. This handler requires an active user session, validates the inputs,
+    writes the changes to the user preferences table in the database, and is rate-
+    limited to 30 requests per minute per IP.
     """
     if payload is None:
         raise HTTPException(
@@ -146,10 +150,13 @@ async def list_user_notifications(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> SuccessResponse[NotificationListResponse]:
-    """
-    Retrieves a paginated list of read and unread notifications for the authenticated organiser.
+    """Retrieves a paginated list of read and unread notifications for the authenticated
+    organiser.
 
-    Returns the notification items sorted with the newest first. This operation requires an active user session, queries the database notifications table using limit and offset pagination with index ordering, and is rate-limited to 60 requests per minute per IP.
+    Returns the notification items sorted with the newest first. This operation requires
+    an active user session, queries the database notifications table using limit and
+    offset pagination with index ordering, and is rate-limited to 60 requests per minute
+    per IP.
     """
     notifications, total = await list_notifications(
         session=session,
@@ -197,10 +204,12 @@ async def get_unread_notifications_count(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[UnreadCountResponse]:
-    """
-    Retrieves the count of unread notifications for the authenticated organiser.
+    """Retrieves the count of unread notifications for the authenticated organiser.
 
-    Provides a total number of unread notifications to render a badge count in the client interface. This endpoint requires an active user session, executes a database query counting notifications where `is_read` is false, and is rate-limited to 120 requests per minute per IP.
+    Provides a total number of unread notifications to render a badge count in the
+    client interface. This endpoint requires an active user session, executes a database
+    query counting notifications where `is_read` is false, and is rate-limited to 120
+    requests per minute per IP.
     """
     count = await get_unread_count(session=session, user_id=current_user.id)
     return SuccessResponse(
@@ -228,10 +237,11 @@ async def mark_one_read(
     current_user: CurrentUser,
     notification_id: UUID,
 ) -> SuccessResponse[None]:
-    """
-    Marks a single notification as read.
+    """Marks a single notification as read.
 
-    Updates the specified notification record's read flag to true if it belongs to the logged-in user. This endpoint requires an active user session, executes a single-row update query in the database, and is rate-limited to 60 requests per minute per IP.
+    Updates the specified notification record's read flag to true if it belongs to the
+    logged-in user. This endpoint requires an active user session, executes a single-row
+    update query in the database, and is rate-limited to 60 requests per minute per IP.
     """
     found = await mark_notification_read(
         session=session,
@@ -263,10 +273,12 @@ async def mark_all_read(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[MarkAllReadResponse]:
-    """
-    Marks all unread notifications as read for the authenticated organiser.
+    """Marks all unread notifications as read for the authenticated organiser.
 
-    Executes a bulk update query on the database notifications table to set the read status of all of the user's unread notifications to true. This batch operation requires an active user session and is rate-limited to 30 requests per minute per IP.
+    Executes a bulk update query on the database notifications table to set the read
+    status of all of the user's unread notifications to true. This batch operation
+    requires an active user session and is rate-limited to 30 requests per minute per
+    IP.
     """
     marked = await mark_all_notifications_read(
         session=session,

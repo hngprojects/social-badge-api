@@ -14,27 +14,12 @@ _session_factory: async_sessionmaker | None = None
 
 
 def _get_session_factory() -> async_sessionmaker:
-    """
-    Lazily build (and cache) a session factory for the worker process.
+    """Lazily build (and cache) a session factory for the worker process.
 
-    Purpose:
-        Caches and returns a SQLAlchemy async session factory for the worker process
-        to avoid recreating database engine connection pools across cron job executions.
-
-    Authentication Context:
-        None.
-        Executed in the context of the background worker process.
-
-    Performance Implications:
-        Ensures the SQLAlchemy engine and pool are created once per worker process
-        lifespan rather than on every job execution, optimizing connection management.
-
-    Rate Limiting:
-        None.
-
-    Dependencies:
-        Depends on `settings.DATABASE_URL`, SQLAlchemy `create_async_engine`,
-        and `async_sessionmaker`.
+    Caches and returns a SQLAlchemy async session factory for the worker process to
+    avoid recreating database engine connection pools across cron job executions.
+    Ensures the SQLAlchemy engine and pool are created once per worker process lifespan
+    rather than on every job execution, optimizing connection management.
     """
     global _session_factory
     if _session_factory is None:
@@ -47,27 +32,12 @@ def _get_session_factory() -> async_sessionmaker:
 
 
 async def send_daily_digests(ctx: dict) -> dict:
-    """
-    Send a daily digest notification to each organiser whose toggle is on.
+    """Sends a daily digest notification to each organiser whose toggle is on (or
+    defaulted in).
 
-    Purpose:
-        Aggregates participant badge creations and share counts over the current UTC day
-        for each organizer and dispatches a daily notification recap.
-
-    Authentication Context:
-        None (background system job).
-        Operates asynchronously on the server.
-
-    Performance Implications:
-        Performs bulk reads of preferences and badges.
-        Aggregates data using a GROUP BY query on the notification logs.
-        Iterates over active target users and inserts individual database notifications.
-
-    Rate Limiting:
-        Executed daily at 20:00 UTC via the arq cron runner.
-
-    Dependencies:
-        Depends on `_get_session_factory` and `create_notification`.
+    Aggregates participant badge creations over the current UTC day for each organizer
+    and dispatches a daily notification recap. Executed daily at 20:00 UTC via the arq
+    cron runner.
     """
     session_factory = _get_session_factory()
     now = datetime.now(UTC)
@@ -152,27 +122,12 @@ async def send_daily_digests(ctx: dict) -> dict:
 
 
 async def send_weekly_reports(ctx: dict) -> dict:
-    """
-    Send a weekly report notification to each organiser whose toggle is on.
+    """Sends a weekly report notification to each organiser whose toggle is on (or
+    defaulted in).
 
-    Purpose:
-        Gathers total creations for the last 7 days and identifies the day of the week
-        with the highest activity, dispatching a weekly summary notification
-        to each organizer.
-
-    Authentication Context:
-        None (background system job).
-
-    Performance Implications:
-        Reads preferences and distinct owners. Executes an individual DOW extraction
-        and group-by query per active user to identify their peak traffic day.
-        Can be slow if there are thousands of active organizers.
-
-        Rate Limiting:
-            Executed weekly on Sunday at 20:00 UTC via the arq cron runner.
-
-        Dependencies:
-            Depends on `_get_session_factory` and `create_notification`.
+    Gathers total creations for the last 7 days and identifies the day of the week with
+    the highest activity, dispatching a weekly summary notification to each organizer.
+    Executed weekly on Sunday at 20:00 UTC via the arq cron runner.
     """
     session_factory = _get_session_factory()
     now = datetime.now(UTC)

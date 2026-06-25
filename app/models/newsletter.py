@@ -8,11 +8,10 @@ from app.models.base import Base
 
 
 class NewsletterSubscriber(Base):
-    """
-    Database representation of a newsletter subscriber.
+    """Database representation of a newsletter subscriber.
 
-    Manages email subscription state, subscription/unsubscription timestamps,
-    and unique tokens for secure, single-click unsubscription mechanisms.
+    Manages email subscription state, subscription/unsubscription timestamps, and unique
+    tokens for secure, single-click unsubscription mechanisms.
     """
 
     __tablename__ = "newsletter_subscribers"

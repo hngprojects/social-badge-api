@@ -23,10 +23,9 @@ _VALID_TEMPLATE_CATEGORIES: frozenset[str] = frozenset(
 
 
 class CreatePlatformTemplateRequest(BaseModel):
-    """
-    Data transfer object representing an administrative request to create a new platform
-    template, defining layout descriptors, thumbnails, category and activation status.
-    """
+    """Data transfer object representing an administrative request to create a new
+    platform template, defining layout descriptors, thumbnails, category and activation
+    status."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -104,10 +103,8 @@ class CreatePlatformTemplateRequest(BaseModel):
     @field_validator("category")
     @classmethod
     def validate_category(cls, v: str) -> str:
-        """
-        Validates that the template category is one of the allowed categories
-        in the system.
-        """
+        """Validates that the template category is one of the allowed categories in the
+        system."""
         if v.lower() not in _VALID_TEMPLATE_CATEGORIES:
             raise ValueError(
                 f"Invalid category '{v}'. Valid options: "
@@ -117,11 +114,9 @@ class CreatePlatformTemplateRequest(BaseModel):
 
 
 class UpdatePlatformTemplateRequest(BaseModel):
-    """
-    Data transfer object representing an administrative request to
-    update an existing platform template, allowing optional fields for editing layouts,
-    details, or active states.
-    """
+    """Data transfer object representing an administrative request to update an existing
+    platform template, allowing optional fields for editing layouts, details, or active
+    states."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -199,9 +194,7 @@ class UpdatePlatformTemplateRequest(BaseModel):
     @field_validator("category")
     @classmethod
     def validate_category(cls, v: str | None) -> str | None:
-        """
-        Validates that the provided category is correct if it is being modified.
-        """
+        """Validates that the provided category is correct if it is being modified."""
         if v is not None and v.lower() not in _VALID_TEMPLATE_CATEGORIES:
             raise ValueError(
                 f"Invalid category '{v}'. Valid options: "
@@ -211,10 +204,8 @@ class UpdatePlatformTemplateRequest(BaseModel):
 
 
 class PlatformTemplateResponse(BaseModel):
-    """
-    Data transfer object representing the detailed information of a platform template,
-    mapping directly from internal template records.
-    """
+    """Data transfer object representing the detailed information of a platform
+    template, mapping directly from internal template records."""
 
     model_config = ConfigDict(from_attributes=True)
 

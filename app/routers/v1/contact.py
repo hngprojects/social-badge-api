@@ -51,10 +51,12 @@ router = APIRouter()
 async def list_contact_subjects(
     request: Request,
 ) -> SuccessResponse[list[ContactSubjectOption]]:
-    """
-    Retrieves all available subjects for the contact form.
+    """Retrieves all available subjects for the contact form.
 
-    Serves categories like bug reports, feedback, and billing that users can select. This public endpoint requires no authentication, responds very quickly without database queries by returning static enum values, and is rate-limited to 30 requests per minute per client IP.
+    Serves categories like bug reports, feedback, and billing that users can select.
+    This public endpoint requires no authentication, responds very quickly without
+    database queries by returning static enum values, and is rate-limited to 30 requests
+    per minute per client IP.
     """
     return SuccessResponse(
         message="Contact subject options retrieved successfully",
@@ -68,12 +70,10 @@ async def list_contact_subjects(
     status_code=status.HTTP_201_CREATED,
     summary="Submit a contact form message",
     description=(
-        """
-        Submits a contact form.
+        """Submits a contact form.
 
-        Generates a unique reference ID for the submission,
-        sends a notification email to the Flare Tag team and an
-        auto-reply confirmation to the sender.
+        Generates a unique reference ID for the submission, sends a notification email
+        to the Flare Tag team and an auto-reply confirmation to the sender.
         """
         "No authentication is required. "
         "Rate-limited to 5 requests per IP per minute to prevent spam."
@@ -116,10 +116,14 @@ async def contact_us(
     request: Request,
     payload: ContactRequest,
 ) -> Any:
-    """
-    Submits a message using the contact form and triggers email notifications.
+    """Submits a message using the contact form and triggers email notifications.
 
-    Validates the contact request payload, generates a unique reference ID, sends an alert email to the support team, and dispatches a confirmation email to the user. This is a public endpoint open to any visitor, rate-limited to 5 requests per minute per IP to protect against spam. Outgoing SMTP network requests block the thread, so response time depends directly on the email service provider's performance.
+    Validates the contact request payload, generates a unique reference ID, sends an
+    alert email to the support team, and dispatches a confirmation email to the user.
+    This is a public endpoint open to any visitor, rate-limited to 5 requests per minute
+    per IP to protect against spam. Outgoing SMTP network requests use `aiosmtplib` for
+    awaited I/O managed by the event loop, so response time is latency-bound rather than
+    thread-blocking.
     """
     try:
         reference_id = await submit_contact_form(payload)

@@ -11,20 +11,18 @@ from app.core.logging.format import LogFormat
 
 
 class InterceptHandler(logging.Handler):
-    """
-    Redirect all standard-library log records into Loguru.
+    """Redirect all standard-library log records into Loguru.
 
-    This makes third-party libraries (SQLAlchemy, httpx, uvicorn, etc.) whose
-    logs arrive via ``logging.getLogger(name)`` visible in the Loguru pipeline
-    with the correct caller location and request context attached.
+    This makes third-party libraries (SQLAlchemy, httpx, uvicorn, etc.) whose logs
+    arrive via ``logging.getLogger(name)`` visible in the Loguru pipeline with the
+    correct caller location and request context attached.
     """
 
     def emit(self, record: logging.LogRecord) -> None:
-        """
-        Translates a standard library logging record into a Loguru record.
+        """Translates a standard library logging record into a Loguru record.
 
-        Resolves caller frame depth dynamically and binds active
-        asynchronous request context.
+        Resolves caller frame depth dynamically and binds active asynchronous request
+        context.
         """
         try:
             level: str | int = logger.level(record.levelname).name
@@ -45,9 +43,8 @@ class InterceptHandler(logging.Handler):
 
 
 def _context_patcher(record: Any) -> None:
-    """
-    Loguru record patcher that injects active async request context and
-    sanitizes log messages.
+    """Loguru record patcher that injects active async request context and sanitizes log
+    messages.
 
     Invoked before log records are serialized or outputted to console/file sinks,
     ensuring sensitive data is masked.
@@ -64,9 +61,8 @@ def setup_logging(
     log_file: Path = Path("logs/app.log"),
     environment: str = "local",
 ) -> None:
-    """
-    Configures the Loguru logger system as the central backend for
-    application-wide logging.
+    """Configures the Loguru logger system as the central backend for application-wide
+    logging.
 
     Registers standard library log interception, defines console and rotating file
     logging sinks, and binds context-aware message patching.

@@ -113,8 +113,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cookie_policy(self) -> Settings:
-        """
-        Validates cookie configuration to ensure secure transmission rules are met.
+        """Validates cookie configuration to ensure secure transmission rules are met.
 
         Raises:
             ValueError: If SameSite is set to "none" but Cookie Secure is disabled.
@@ -125,9 +124,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> Self:
-        """
-        Validates that production environment configurations do not use
-        placeholder values.
+        """Validates that production environment configurations do not use placeholder
+        values.
 
         Raises:
             ValueError: If key services (Google OAuth, SMTP, contact recipient) are left
@@ -169,10 +167,8 @@ class Settings(BaseSettings):
     @field_validator("MAX_CONTENT_BODY_SIZE")
     @classmethod
     def validate_max_content_body_size(cls, val: int) -> int:
-        """
-        Validates that configured max allowed request content body size is a
-        positive integer.
-        """
+        """Validates that configured max allowed request content body size is a positive
+        integer."""
         if val <= 0:
             raise ValueError("MAX_CONTENT_BODY_SIZE must be greater than 0")
 
@@ -181,11 +177,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Instantiates and returns a cached Settings singleton instance.
+    """Instantiates and returns a cached Settings singleton instance.
 
-    Uses `functools.lru_cache` to load settings from environment variables
-    and any matching config files once upon first call.
+    Uses `functools.lru_cache` to load settings from environment variables and any
+    matching config files once upon first call.
     """
     return Settings()  # type: ignore[call-arg]
 

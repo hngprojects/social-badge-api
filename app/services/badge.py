@@ -48,8 +48,8 @@ VALID_CATEGORIES = frozenset(
 async def _increment_template_badge_count(
     session: AsyncSession, platform_template_id: UUID
 ) -> None:
-    """
-    Increments the total count of badges generated using a specific platform template.
+    """Increments the total count of badges generated using a specific platform
+    template.
 
     Performs an in-place atomic update query in the database.
     """
@@ -65,8 +65,7 @@ async def create_badge(
     organiser_id: UUID,
     platform_template_id: UUID,
 ) -> Badge:
-    """
-    Creates and persists a new badge instance based on a platform template.
+    """Creates and persists a new badge instance based on a platform template.
 
     Verifies that the platform template exists and is active.
     Clones properties such as title and canvas data from the platform template,
@@ -115,8 +114,7 @@ async def publish_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
-    """
-    Publishes a badge to make it publicly viewable.
+    """Publishes a badge to make it publicly viewable.
 
     Marks the badge as published, sets its publication timestamp,
     and assigns a unique share slug if one hasn't been generated yet.
@@ -170,8 +168,7 @@ async def unpublish_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
-    """
-    Unpublishes an active badge, removing its public visibility.
+    """Unpublishes an active badge, removing its public visibility.
 
     Resets the publication status and timestamp of the badge,
     commits the changes to the database, and refreshes the object.
@@ -202,8 +199,7 @@ async def upload_badge_logo(
     organiser_id: UUID,
     image_data: bytes,
 ) -> str:
-    """
-    Uploads a logo for a badge to Cloudinary and persists the URL in the database.
+    """Uploads a logo for a badge to Cloudinary and persists the URL in the database.
 
     Retrieves the badge, uploads the logo binary to Cloudinary,
     updates logo metadata (URL and public ID), and commits.
@@ -270,8 +266,7 @@ async def get_public_badge_by_slug(
     session: AsyncSession,
     slug: str,
 ) -> Badge:
-    """
-    Fetches a published badge along with its hashtags using its share slug.
+    """Fetches a published badge along with its hashtags using its share slug.
 
     Performs a public lookup of non-deleted, published badges.
 
@@ -302,8 +297,7 @@ _PUBLIC_WHERE = (
 
 
 async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
-    """
-    Atomically increments the share count of a published badge by one.
+    """Atomically increments the share count of a published badge by one.
 
     Performs an update query on the database using the badge's share slug.
 
@@ -325,9 +319,8 @@ async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
 
 
 async def increment_badge_creation_count(session: AsyncSession, slug: str) -> None:
-    """
-    Atomically increments the creation count of a published badge
-    and creates a notification.
+    """Atomically increments the creation count of a published badge and creates a
+    notification.
 
     Increments the creation_count in the database,
     retrieves the badge's metadata,
@@ -369,9 +362,8 @@ async def list_platform_templates(
     page: int = 1,
     limit: int = 10,
 ) -> tuple[list[PlatformTemplate], int]:
-    """
-    Retrieves a paginated list of active platform templates,
-    optionally filtered by category.
+    """Retrieves a paginated list of active platform templates, optionally filtered by
+    category.
 
     Validates the category if provided, counts the total matching templates,
     and returns a tuple containing the matching templates list and the total count.
@@ -432,8 +424,7 @@ async def get_platform_template(
     session: AsyncSession,
     id: UUID,
 ) -> PlatformTemplate:
-    """
-    Fetches a single active platform template by its identifier.
+    """Fetches a single active platform template by its identifier.
 
     Raises:
         PlatformTemplateNotFoundError: If the template is not found or is inactive.
@@ -456,8 +447,7 @@ async def duplicate_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
-    """
-    Duplicates an existing badge and its hashtags for the same organiser.
+    """Duplicates an existing badge and its hashtags for the same organiser.
 
     Fetches the original badge, creates a new Badge record containing the cloned fields
     with copy suffixes and cleared publication/slug/logo fields,
@@ -526,12 +516,10 @@ async def list_badges(
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[Badge], int]:
-    """
-    Retrieves a paginated list of non-deleted badges owned by a specific organiser.
+    """Retrieves a paginated list of non-deleted badges owned by a specific organiser.
 
-    Orders the badges by last updated and creation times,
-    and returns a tuple containing the list of badges and the total number of badges
-    matching the query.
+    Orders the badges by last updated and creation times, and returns a tuple containing
+    the list of badges and the total number of badges matching the query.
     """
     base_conditions = (
         Badge.organiser_id == organiser_id,
@@ -572,8 +560,7 @@ async def delete_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> None:
-    """
-    Soft-deletes a badge and deletes its logo from Cloudinary.
+    """Soft-deletes a badge and deletes its logo from Cloudinary.
 
     Sets the deleted_at timestamp on the badge record, unpublishes it, and commits.
     Once the transaction is committed, attempts to delete the logo from Cloudinary.
@@ -631,8 +618,7 @@ async def get_badge_by_id(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
-    """
-    Retrieves a non-deleted badge and its hashtags by its unique identifier.
+    """Retrieves a non-deleted badge and its hashtags by its unique identifier.
 
     Verifies ownership before returning the database record.
 
@@ -665,8 +651,7 @@ async def edit_badge(
     new_hashtags: list[str] | None,
     update_hashtags: bool,
 ) -> Badge:
-    """
-    Modifies an existing badge's details, access controls, and hashtags.
+    """Modifies an existing badge's details, access controls, and hashtags.
 
     Applies attribute updates, validates private access codes
     (between 4 and 10 characters), replaces existing hashtags if specified,
@@ -727,12 +712,11 @@ async def get_badge_analytics(
     session: AsyncSession,
     organiser_id: UUID,
 ) -> tuple[int, int, int, int, list[tuple[UUID, int]]]:
-    """
-    Calculates aggregates and platform template usage analytics
-    for an organiser's badges.
+    """Calculates aggregates and platform template usage analytics for an organiser's
+    badges.
 
-    Queries the database to calculate total badges, active (published) badges,
-    overall shares, overall creations, and templates usage counts sorted by frequency.
+    Queries the database to calculate total badges, active (published) badges, overall
+    shares, overall creations, and templates usage counts sorted by frequency.
     """
     base_conditions = (
         Badge.organiser_id == organiser_id,

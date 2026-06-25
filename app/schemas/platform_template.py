@@ -6,10 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlatformTemplateResponse(BaseModel):
-    """
-    Data transfer object representing a platform-wide badge template,
-    describing its gallery card layout, visual style options, and usage statistics.
-    """
+    """Data transfer object representing a platform-wide badge template, describing its
+    gallery card layout, visual style options, and usage statistics."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,10 +44,8 @@ class PlatformTemplateResponse(BaseModel):
 
 
 class PlatformTemplateListResponse(BaseModel):
-    """
-    Data transfer object representing a paginated collection of platform templates,
-    complete with pagination metadata and cursor links.
-    """
+    """Data transfer object representing a paginated collection of platform templates,
+    complete with pagination metadata and cursor links."""
 
     templates: list[PlatformTemplateResponse]
     total: int = Field(

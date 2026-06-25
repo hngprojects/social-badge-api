@@ -4,11 +4,10 @@ import bcrypt
 
 
 def hash_password(password: str) -> str:
-    """
-    Hashes a plain-text password using bcrypt.
+    """Hashes a plain-text password using bcrypt.
 
-    Encodes the input string to UTF-8 and uses `bcrypt.gensalt` to create
-    a secure hash before decoding it back to a UTF-8 string.
+    Encodes the input string to UTF-8 and uses `bcrypt.gensalt` to create a secure hash
+    before decoding it back to a UTF-8 string.
     """
     pwd_bytes = password.encode("utf-8")
     salt = bcrypt.gensalt()
@@ -17,11 +16,10 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verifies a plain-text password against a hashed representation.
+    """Verifies a plain-text password against a hashed representation.
 
-    Encodes inputs to UTF-8, checks for bcrypt's 72-byte password limitation,
-    and returns False on failure/type mismatches.
+    Encodes inputs to UTF-8, checks for bcrypt's 72-byte password limitation, and
+    returns False on failure/type mismatches.
     """
     try:
         password_byte_enc = plain_password.encode("utf-8")
@@ -34,13 +32,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             password=password_byte_enc,
             hashed_password=hashed_password_byte_enc,
         )
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
 
 
 def validate_password_strength(val: str) -> str:
-    """
-    Validates that a password meets length and complexity criteria.
+    """Validates that a password meets length and complexity criteria.
 
     Raises:
         ValueError: If the password does not meet standard entropy and complexity rules

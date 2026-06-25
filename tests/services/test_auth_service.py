@@ -1327,7 +1327,6 @@ async def test_send_security_alert_best_effort_calls_send_email() -> None:
         mock_alert.assert_awaited_once_with("user@example.com", detected_at)
 
 
-
 # resend_verification_email — token revocation
 async def test_resend_revokes_previous_verification_token(
     db_session: AsyncSession,

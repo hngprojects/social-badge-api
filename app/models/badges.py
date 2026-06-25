@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -14,8 +16,7 @@ if TYPE_CHECKING:
 
 
 class Badge(Base):
-    """
-    Database representation of an event or organization badge.
+    """Database representation of an event or organization badge.
 
     Stores template configurations, custom layouts (canvas data), accessibility options,
     access control (such as codes or privacy types), and engagement metrics.
@@ -78,8 +79,8 @@ class Badge(Base):
 
 
 class BadgeHashtag(Base):
-    """
-    Database representation of a social media hashtag associated with a specific badge.
+    """Database representation of a social media hashtag associated with a specific
+    badge.
 
     Enables categorization and aggregation of badges to support sharing campaign
     analytics and discovery.

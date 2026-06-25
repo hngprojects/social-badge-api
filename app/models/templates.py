@@ -13,12 +13,11 @@ if TYPE_CHECKING:
 
 
 class PlatformTemplate(Base):
-    """
-    Database representation of a platform-wide reusable badge template.
+    """Database representation of a platform-wide reusable badge template.
 
-    Stores default layout configuration (canvas data), categorizations,
-    preview thumbnails, active status, usage statistics (total badges made),
-    and relationships to generated badges.
+    Stores default layout configuration (canvas data), categorizations, preview
+    thumbnails, active status, usage statistics (total badges made), and relationships
+    to generated badges.
     """
 
     __tablename__ = "platform_templates"

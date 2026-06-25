@@ -7,9 +7,7 @@ from app.core.sanitizer import validate_no_html
 
 
 class ContactTopic(StrEnum):
-    """
-    Enumeration of the supported topics or categories for contact form inquiries.
-    """
+    """Enumeration of the supported topics or categories for contact form inquiries."""
 
     GENERAL = "general"
     PARTNERSHIP = "partnership"
@@ -20,10 +18,8 @@ class ContactTopic(StrEnum):
 
 
 class ContactRequest(BaseModel):
-    """
-    Data transfer object representing a contact form submission, enforcing validation
-    on the sender name, email, topic, and message content.
-    """
+    """Data transfer object representing a contact form submission, enforcing validation
+    on the sender name, email, topic, and message content."""
 
     first_name: str = Field(
         ...,
@@ -58,10 +54,8 @@ class ContactRequest(BaseModel):
     @field_validator("first_name")
     @classmethod
     def validate_first_name(cls, val: str) -> str:
-        """
-        Sanitizes the sender's first name by trimming whitespace
-        and ensuring it does not contain HTML tags.
-        """
+        """Sanitizes the sender's first name by trimming whitespace and ensuring it does
+        not contain HTML tags."""
         if not val or not val.strip():
             raise ValueError("First name cannot be empty")
         return validate_no_html(val.strip(), "First name")
@@ -69,10 +63,8 @@ class ContactRequest(BaseModel):
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
-        """
-        Sanitizes the optional last name by trimming whitespace and
-        ensuring it does not contain HTML tags, returning None if empty.
-        """
+        """Sanitizes the optional last name by trimming whitespace and ensuring it does
+        not contain HTML tags, returning None if empty."""
         if val is None:
             return None
         stripped = val.strip()
@@ -83,10 +75,8 @@ class ContactRequest(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
-        """
-        Normalizes the email address by trimming surrounding whitespace
-        and converting it to lowercase.
-        """
+        """Normalizes the email address by trimming surrounding whitespace and
+        converting it to lowercase."""
         if isinstance(val, str):
             return val.strip().lower()
         return val
@@ -94,10 +84,8 @@ class ContactRequest(BaseModel):
     @field_validator("message")
     @classmethod
     def validate_message(cls, val: str) -> str:
-        """
-        Validates and sanitizes the contact message body, enforcing length limits of 10
-        to 500 characters and stripping HTML tags.
-        """
+        """Validates the contact message body by enforcing length limits of 10 to 500
+        characters and rejecting HTML tags."""
         stripped = val.strip()
         if len(stripped) < 10:
             raise ValueError("Message must be at least 10 characters long")
@@ -107,10 +95,8 @@ class ContactRequest(BaseModel):
 
 
 class ContactResponse(BaseModel):
-    """
-    Data transfer object representing the response after a contact inquiry
-    is successfully received, providing a tracking reference ID.
-    """
+    """Data transfer object representing the response after a contact inquiry is
+    successfully received, providing a tracking reference ID."""
 
     reference_id: str = Field(
         ...,
@@ -125,10 +111,8 @@ class ContactResponse(BaseModel):
 
 
 class ContactSubjectOption(BaseModel):
-    """
-    Schema representing a single subject or topic option in the contact dropdown list,
-    providing both the raw enum value and a user-friendly label.
-    """
+    """Schema representing a single subject or topic option in the contact dropdown
+    list, providing both the raw enum value and a user-friendly label."""
 
     value: str = Field(
         ...,

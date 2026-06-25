@@ -12,10 +12,8 @@ from pydantic import (
 
 
 class CreateBadgeRequest(BaseModel):
-    """
-    Data transfer object representing a request to create a new badge template instance
-    based on a platform template.
-    """
+    """Data transfer object representing a request to create a new badge template
+    instance based on a platform template."""
 
     platform_template_id: UUID = Field(
         ...,
@@ -25,10 +23,8 @@ class CreateBadgeRequest(BaseModel):
 
 
 class CreateBadgeResponse(BaseModel):
-    """
-    Data transfer object representing a successful badge creation response,
-    mapping from internal database models.
-    """
+    """Data transfer object representing a successful badge creation response, mapping
+    from internal database models."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,10 +47,8 @@ class CreateBadgeResponse(BaseModel):
 
 
 class PublishedBadgeResponse(BaseModel):
-    """
-    Data transfer object representing a published badge template's access and slugs,
-    mapping from database model attributes.
-    """
+    """Data transfer object representing a published badge template's access and slugs,
+    mapping from database model attributes."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,10 +73,8 @@ class PublishedBadgeResponse(BaseModel):
 
 
 class LogoUploadResponse(BaseModel):
-    """
-    Data transfer object representing the uploaded logo result,
-    returning the public hosting URL.
-    """
+    """Data transfer object representing the uploaded logo result, returning the public
+    hosting URL."""
 
     logo_url: str = Field(
         ...,
@@ -94,10 +86,8 @@ class LogoUploadResponse(BaseModel):
 
 
 class PublicBadgePageResponse(BaseModel):
-    """
-    Data transfer object representing a badge's public page details,
-    containing canvas layout, logo, and hashtags.
-    """
+    """Data transfer object representing a badge's public page details, containing
+    canvas layout, logo, and hashtags."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -124,10 +114,8 @@ class PublicBadgePageResponse(BaseModel):
 
 
 class DuplicateBadgeResponse(BaseModel):
-    """
-    Data transfer object representing a response for a duplicated badge,
-    defining it as a new unpublished draft template copy.
-    """
+    """Data transfer object representing a response for a duplicated badge, defining it
+    as a new unpublished draft template copy."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -148,11 +136,10 @@ class DuplicateBadgeResponse(BaseModel):
 
 
 class BadgeSummary(BaseModel):
-    """
-    Per-item shape for the organiser's template dashboard list.
+    """Per-item shape for the organiser's template dashboard list.
 
-    canvas_data is intentionally excluded — it is large and not needed for rendering
-    a dashboard card.
+    canvas_data is intentionally excluded — it is large and not needed for rendering a
+    dashboard card.
     """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -201,18 +188,13 @@ class BadgeSummary(BaseModel):
     @computed_field
     @property
     def status(self) -> str:
-        """
-        Determines the current publishing status of the badge as either 'published'
-        or 'draft'.
-        """
+        """Determines the current publishing status of the badge as either 'published'
+        or 'draft'."""
         return "published" if self.is_published else "draft"
 
 
 class BadgeListResponse(BaseModel):
-    """
-    Data transfer object representing a paginated collection of badge
-    summaries.
-    """
+    """Data transfer object representing a paginated collection of badge summaries."""
 
     badges: list[BadgeSummary]
     total: int = Field(..., description="Total badges matching the filter.")
@@ -223,10 +205,8 @@ class BadgeListResponse(BaseModel):
 
 
 class EditBadgeRequest(BaseModel):
-    """
-    Data transfer object representing a request to edit an existing badge instance,
-    permitting optional field changes.
-    """
+    """Data transfer object representing a request to edit an existing badge instance,
+    permitting optional field changes."""
 
     title: str | None = None
     canvas_data: dict[str, Any] | None = None
@@ -240,9 +220,7 @@ class EditBadgeRequest(BaseModel):
     @field_validator("title")
     @classmethod
     def title_not_empty(cls, val: str | None) -> str | None:
-        """
-        Validates that the provided title is not empty after stripping whitespace.
-        """
+        """Validates that the provided title is not empty after stripping whitespace."""
         if val is not None and not val.strip():
             raise ValueError("title cannot be empty")
         return val.strip() if val is not None else val
@@ -250,10 +228,8 @@ class EditBadgeRequest(BaseModel):
     @field_validator("access_code")
     @classmethod
     def validate_access_code(cls, val: str | None) -> str | None:
-        """
-        Validates that the provided access code has a length between 4
-        and 10 characters.
-        """
+        """Validates that the provided access code has a length between 4 and 10
+        characters."""
         if val is not None:
             val = val.strip()
             if not val:
@@ -265,9 +241,7 @@ class EditBadgeRequest(BaseModel):
     @field_validator("hashtags")
     @classmethod
     def clean_hashtags(cls, val: list[str] | None) -> list[str] | None:
-        """
-        Strips whitespace from each hashtag and removes any duplicate tags.
-        """
+        """Strips whitespace from each hashtag and removes any duplicate tags."""
         if val is None:
             return None
         stripped = [tag.strip() for tag in val if tag.strip()]
@@ -275,10 +249,8 @@ class EditBadgeRequest(BaseModel):
 
 
 class BadgeDetailResponse(BaseModel):
-    """
-    Data transfer object representing full details of a badge template,
-    including analytics counts, logo, and hashtags.
-    """
+    """Data transfer object representing full details of a badge template, including
+    analytics counts, logo, and hashtags."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -311,9 +283,8 @@ class BadgeDetailResponse(BaseModel):
 
 
 class PlatformTemplateUsage(BaseModel):
-    """
-    Data transfer object describing the usage count of a specific platform template.
-    """
+    """Data transfer object describing the usage count of a specific platform
+    template."""
 
     platform_template_id: UUID = Field(
         ..., description="The platform template the badges are based on."
@@ -322,10 +293,8 @@ class PlatformTemplateUsage(BaseModel):
 
 
 class BadgeAnalyticsResponse(BaseModel):
-    """
-    Data transfer object presenting a summary of the organiser's badge creation
-    and sharing analytics.
-    """
+    """Data transfer object presenting a summary of the organiser's badge creation and
+    sharing analytics."""
 
     total_organiser_badges: int = Field(
         ...,
@@ -338,8 +307,9 @@ class BadgeAnalyticsResponse(BaseModel):
     @computed_field
     @property
     def total_draft_badges(self) -> int:
-        """
-        Count of draft (unpublished) badges. Derived from total minus active.
+        """Count of draft (unpublished) badges.
+
+        Derived from total minus active.
         """
         return self.total_organiser_badges - self.total_active_badges
 

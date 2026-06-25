@@ -445,7 +445,10 @@ async def test_resend_verification_email_rate_limit(
 async def verified_login_user(
     db_session: AsyncSession,
 ) -> AsyncIterator[dict[str, str]]:
-    """Insert a verified user and return its credentials. Cleans up after the test."""
+    """Insert a verified user and return its credentials.
+
+    Cleans up after the test.
+    """
     creds: dict[str, str] = {
         "email": "login@example.com",
         "password": "StrongPassword1!",  # noqa: S106
@@ -469,7 +472,10 @@ async def verified_login_user(
 async def unverified_login_user(
     db_session: AsyncSession,
 ) -> AsyncIterator[dict[str, str]]:
-    """Insert an unverified user and return its credentials. Cleans up after the test."""  # noqa: E501
+    """Insert an unverified user and return its credentials.
+
+    Cleans up after the test.
+    """  # noqa: E501
     creds: dict[str, str] = {
         "email": "unverified@example.com",
         "password": "StrongPassword1!",  # noqa: S106

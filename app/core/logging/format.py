@@ -3,11 +3,10 @@ from typing import Any
 
 
 class LogFormat:
-    """
-    Produce consistent Loguru-compatible format strings for console and file sinks.
+    """Produce consistent Loguru-compatible format strings for console and file sinks.
 
-    Keeps colour markup in a single place so changing the palette
-    only requires editing this class.
+    Keeps colour markup in a single place so changing the palette only requires editing
+    this class.
     """
 
     _LEVEL_COLOURS: dict[str, str] = {
@@ -21,9 +20,8 @@ class LogFormat:
     }
 
     def __init__(self, record: Any) -> None:
-        """
-        Initializes the LogFormat by parsing and structuring log record attributes.
-        """
+        """Initializes the LogFormat by parsing and structuring log record
+        attributes."""
         self._record = record
         self.time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         self.level = record["level"].name
@@ -34,10 +32,8 @@ class LogFormat:
         self.location = f"{record['file'].name}:{variable_location}:{record['line']}"
 
     def console(self) -> str:
-        """
-        Produces a colorized, human-readable format string for stdout/console
-        destinations.
-        """
+        """Produces a colorized, human-readable format string for stdout/console
+        destinations."""
         colour = self._colour
         return (
             f"<dim><bold>{self.time_str}</bold></dim> | "
@@ -48,10 +44,8 @@ class LogFormat:
         )
 
     def file(self) -> str:
-        """
-        Produces a structured, serialized format string with extra ctx fields
-        for file sinks.
-        """
+        """Produces a structured, serialized format string with extra ctx fields for
+        file sinks."""
         extras = {
             key: value
             for key, value in self._record["extra"].items()

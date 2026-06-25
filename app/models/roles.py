@@ -12,8 +12,7 @@ if TYPE_CHECKING:
 
 
 class Role(Base):
-    """
-    Database representation of a user role.
+    """Database representation of a user role.
 
     Defines specific authorization permissions or access levels (e.g., 'admin', 'user')
     that can be assigned to users in the system.
@@ -43,9 +42,8 @@ class Role(Base):
 
 
 class UserRole(Base):
-    """
-    Association model representing the many-to-many relationship between
-    users and roles.
+    """Association model representing the many-to-many relationship between users and
+    roles.
 
     Links a specific user to a specific role, tracking assignment timestamps.
     """

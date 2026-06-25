@@ -20,11 +20,10 @@ if TYPE_CHECKING:
 
 
 class AuthProvider(Base):
-    """
-    Database representation of an authentication provider linked to a user.
+    """Database representation of an authentication provider linked to a user.
 
-    Supports multiple login identity providers (e.g., OAuth, Google, GitHub,
-    or local credentials) for a single user account.
+    Supports multiple login identity providers (e.g., OAuth, Google, GitHub, or local
+    credentials) for a single user account.
     """
 
     __tablename__ = "auth_providers"
@@ -54,12 +53,10 @@ class AuthProvider(Base):
 
 
 class RefreshToken(Base):
-    """
-    Database representation of a user session's refresh token.
+    """Database representation of a user session's refresh token.
 
-    Tracks issued tokens, expiration, revocation, token rotation families
-    (for detecting replay attacks), and user session metadata such as user agent
-    and IP address.
+    Tracks issued tokens, expiration, revocation, token rotation families (for detecting
+    replay attacks), and user session metadata such as user agent and IP address.
     """
 
     __tablename__ = "refresh_tokens"

@@ -26,35 +26,11 @@ async def get_current_user(
     redis: RedisClient,
     token: Annotated[str | None, Depends(security)],
 ) -> User:
-    """
-    Validate the caller's JWT access token and retrieve the current user.
+    """Validates the caller's JWT access token and retrieves the current user.
 
-        Purpose:
-            Decodes the access token cookie, verifies that the token's JTI
-            is not
-            revoked (blacklisted), and fetches the associated user record
-            from the database.
-
-        Authentication Context:
-            Acts as the primary authentication gate for general user
-            endpoints. Requires
-            the presence of the ACCESS_COOKIE API key cookie.
-
-        Performance Implications:
-            Uses Redis to query token blacklist status (fast O(1) read).
-            Performs a
-            primary key query on the users database table. JWT decoding is
-            offloaded to
-            a threadpool to avoid blocking the event loop.
-
-        Rate Limiting:
-            No native rate limiting is enforced by this dependency, but
-            callers are bound
-            by the rate limits of the endpoints that include it.
-
-        Dependencies:
-            Depends on `get_session` (database) and `get_redis_client`
-            (Redis).
+    Decodes the access token cookie, verifies that the token's JTI is not revoked
+    (blacklisted), and fetches the associated user record from the database. Acts as the
+    primary authentication gate for general user endpoints.
     """
     if not token:
         raise HTTPException(
@@ -112,29 +88,11 @@ async def get_current_admin(
     redis: RedisClient,
     token: Annotated[str | None, Depends(security)],
 ) -> User:
-    """
-    Validate the caller's JWT access token and assert that the user has
-    admin role privileges.
+    """Validates the caller's JWT access token and asserts admin role privileges.
 
-    Purpose:
-        Verifies the access token, checks the token blacklist, retrieves the user,
-        and joins the UserRole and Role tables to verify the user is associated
-        with the 'admin' role.
-
-    Authentication Context:
-        Admin authorization gate. Rejects users lacking the explicit 'admin' role name
-        with a 403 Forbidden.
-
-    Performance Implications:
-        Executes a database fetch for the User, followed by a join query
-        between the Role and UserRole tables.
-        Checks the token blacklist in Redis and decodes the JWT asynchronously.
-
-    Rate Limiting:
-        No native rate limiting is enforced by this dependency.
-
-    Dependencies:
-        Depends on `get_session` (database) and `get_redis_client` (Redis).
+    Verifies the access token, checks the token blacklist, retrieves the user, and joins
+    the UserRole and Role tables to verify the user is associated with the 'admin' role.
+    Rejects users lacking the explicit 'admin' role name with a 403 Forbidden.
     """
     _forbidden = HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
