@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Application settings and configuration."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -23,7 +25,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] | str = []
 
     DATABASE_URL: PostgresDsn
-    REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore[assignment]
+    REDIS_URL: RedisDsn | str = "redis://localhost:6379/0"
 
     SECRET_KEY: str
     ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
@@ -39,7 +41,7 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: str = ""
 
     MAX_LOGIN_ATTEMPTS: int = 5
-    LOCKOUT_WINDOW: int = 900  # 15 minutes in seconds
+    LOCKOUT_WINDOW: int = 900
     FAILED_LOGIN_PREFIX: str = "failed_login:"
 
     CONTACT_RECIPIENT_EMAIL: str = ""
@@ -69,7 +71,6 @@ class Settings(BaseSettings):
     TOKEN_USER_PREFIX: str = "verify_user:"  # noqa: S105
     PASSWORD_RESET_PREFIX: str = "pwd_reset:"  # noqa: S105
     GOOGLE_STATE_PREFIX: str = "oauth:google:state:"
-    GOOGLE_EXCHANGE_PREFIX: str = "oauth:google:exchange:"
     BLACKLIST_PREFIX: str = "blacklist:jti:"
 
     CLOUDINARY_CLOUD_NAME: str = ""
@@ -77,9 +78,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = ""
     LOGO_FOLDER: str = "template-logos"
 
-    MAX_SLUG_RETRIES: int = 5
-
-    MAX_CONTENT_BODY_SIZE: int = 10 * 1024 * 1024  # 10 MB
+    MAX_CONTENT_BODY_SIZE: int = 10 * 1024 * 1024
 
     REFRESH_REUSE_GRACE_SECONDS: int = 5
     SECURITY_ALERT_SUBJECT: str = "Security alert — all sessions have been terminated"
@@ -90,11 +89,13 @@ class Settings(BaseSettings):
     @field_validator("FRONTEND_URL", mode="after")
     @classmethod
     def clean_frontend_url(cls, val: str) -> str:
+        """Cleans the frontend URL by removing trailing slashes."""
         return val.rstrip("/")
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, val: Any) -> list[str] | str:
+        """Assembles the CORS origins into a list of strings."""
         if isinstance(val, str) and val.startswith("[") and val.endswith("]"):
             try:
                 decoded = json.loads(val)
@@ -111,13 +112,25 @@ class Settings(BaseSettings):
         raise ValueError(f"Invalid format for ALLOWED_ORIGINS: {val}")
 
     @model_validator(mode="after")
-    def validate_cookie_policy(self) -> "Settings":
+    def validate_cookie_policy(self) -> Settings:
+        """Validates cookie configuration to ensure secure transmission rules are met.
+
+        Raises:
+            ValueError: If SameSite is set to "none" but Cookie Secure is disabled.
+        """
         if self.COOKIE_SAMESITE == "none" and not self.COOKIE_SECURE:
             raise ValueError("COOKIE_SECURE must be True when COOKIE_SAMESITE='none'")
         return self
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> Self:
+        """Validates that production environment configurations do not use placeholder
+        values.
+
+        Raises:
+            ValueError: If key services (Google OAuth, SMTP, contact recipient) are left
+            unset or configure default placeholder values in a production environment.
+        """
         if self.ENVIRONMENT.strip().lower() != "production":
             return self
 
@@ -154,6 +167,8 @@ class Settings(BaseSettings):
     @field_validator("MAX_CONTENT_BODY_SIZE")
     @classmethod
     def validate_max_content_body_size(cls, val: int) -> int:
+        """Validates that configured max allowed request content body size is a positive
+        integer."""
         if val <= 0:
             raise ValueError("MAX_CONTENT_BODY_SIZE must be greater than 0")
 
@@ -162,6 +177,11 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Instantiates and returns a cached Settings singleton instance.
+
+    Uses `functools.lru_cache` to load settings from environment variables and any
+    matching config files once upon first call.
+    """
     return Settings()  # type: ignore[call-arg]
 
 

@@ -1,9 +1,3 @@
-"""Scheduled jobs that generate Daily Digest and Weekly Report notifications.
-
-Both jobs aggregate metrics for each organiser whose toggle for that
-notification type is on, then create one in-app notification per organiser.
-"""
-
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -22,8 +16,10 @@ _session_factory: async_sessionmaker | None = None
 def _get_session_factory() -> async_sessionmaker:
     """Lazily build (and cache) a session factory for the worker process.
 
-    Cached at module level so the engine is created once per worker
-    process, not once per cron run.
+    Caches and returns a SQLAlchemy async session factory for the worker process to
+    avoid recreating database engine connection pools across cron job executions.
+    Ensures the SQLAlchemy engine and pool are created once per worker process lifespan
+    rather than on every job execution, optimizing connection management.
     """
     global _session_factory
     if _session_factory is None:
@@ -36,13 +32,12 @@ def _get_session_factory() -> async_sessionmaker:
 
 
 async def send_daily_digests(ctx: dict) -> dict:
-    """Send a daily digest notification to each organiser whose toggle is on.
+    """Sends a daily digest notification to each organiser whose toggle is on (or
+    defaulted in).
 
-    The digest counts every participant-generated badge across all the
-    organiser's published badges for the day, plus the total share count
-    increments. Uses the current UTC day.
-
-    Returns a small summary dict for arq's job log.
+    Aggregates participant badge creations over the current UTC day for each organizer
+    and dispatches a daily notification recap. Executed daily at 20:00 UTC via the arq
+    cron runner.
     """
     session_factory = _get_session_factory()
     now = datetime.now(UTC)
@@ -127,10 +122,12 @@ async def send_daily_digests(ctx: dict) -> dict:
 
 
 async def send_weekly_reports(ctx: dict) -> dict:
-    """Send a weekly report notification to each organiser whose toggle is on.
+    """Sends a weekly report notification to each organiser whose toggle is on (or
+    defaulted in).
 
-    The report covers the last 7 days. Includes total badges created and
-    the day of the week with the highest activity.
+    Gathers total creations for the last 7 days and identifies the day of the week with
+    the highest activity, dispatching a weekly summary notification to each organizer.
+    Executed weekly on Sunday at 20:00 UTC via the arq cron runner.
     """
     session_factory = _get_session_factory()
     now = datetime.now(UTC)

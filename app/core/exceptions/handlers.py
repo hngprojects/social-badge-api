@@ -10,28 +10,36 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.sanitizer import data_sanitizer
+from app.core import sanitizer
 from app.schemas.response import ErrorResponse
 
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catches, logs, and processes all unhandled exceptions in the application.
+
+    Acts as the primary FastAPI error interceptor. Inspects exception types (such as
+    SQLAlchemy database errors, RequestValidationErrors, RateLimitExceeded events, or
+    Starlette HTTPExceptions), extracts the traceback or SQL structure, sanitizes
+    sensitive content for logs via Loguru, and returns a unified JSONResponse wrapping
+    an ErrorResponse schema to avoid exposing system internals.
+    """
     exc_type = type(exc).__name__
 
     if hasattr(exc, "statement") and hasattr(exc, "params"):
         sql_exc = cast(Any, exc)
-        exc_msg = data_sanitizer.sanitize_sql_for_logging(
+        exc_msg = sanitizer.sanitize_sql_for_logging(
             sql_exc.statement,
             sql_exc.params,
         )
     elif hasattr(exc, "response") and hasattr(cast(Any, exc).response, "text"):
         try:
-            exc_msg = data_sanitizer.sanitize_exception_for_logging(
+            exc_msg = sanitizer.sanitize_exception_for_logging(
                 json.loads(cast(Any, exc).response.text)
             )
         except Exception:
-            exc_msg = data_sanitizer.sanitize_exception_for_logging(str(exc))
+            exc_msg = sanitizer.sanitize_exception_for_logging(str(exc))
     else:
-        exc_msg = data_sanitizer.sanitize_exception_for_logging(exc)
+        exc_msg = sanitizer.sanitize_exception_for_logging(exc)
 
     if isinstance(exc, IntegrityError):
         return JSONResponse(
@@ -46,7 +54,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             "SQLAlchemyError -> {} | sanitized={} | orig={}",
             exc_type,
             exc_msg,
-            data_sanitizer.sanitize_exception_for_logging(exc_orig),
+            sanitizer.sanitize_exception_for_logging(exc_orig),
         )
         return JSONResponse(
             status_code=500,
@@ -91,7 +99,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     tb = traceback.extract_tb(exc.__traceback__)
     if tb:
         tb_str = "".join(traceback.format_list(tb))
-        location = data_sanitizer.sanitize_for_logging(f"\nTraceback:\n{tb_str}")
+        location = sanitizer.sanitize_for_logging(f"\nTraceback:\n{tb_str}")
     else:
         location = "No traceback available"
 
@@ -109,6 +117,12 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    """Registers the centralized global exception handler.
+
+    Binds handlers for RateLimitExceeded, StarletteHTTPException,
+    RequestValidationError, and the base Exception class so that all application errors
+    yield standard JSON responses.
+    """
     app.add_exception_handler(RateLimitExceeded, global_exception_handler)
     app.add_exception_handler(StarletteHTTPException, global_exception_handler)
     app.add_exception_handler(RequestValidationError, global_exception_handler)

@@ -10,10 +10,16 @@ EMAIL_TEMPLATES_DIR = Path(__file__).resolve().parent
 
 
 def render(name: str, **variables: str) -> str:
-    """Load `<name>.html` and substitute `$placeholders`.
+    """Loads an HTML template by name and substitutes placeholder variables.
 
-    Common variables (`current_year`, `frontend_url`) are injected
-    automatically but can be overridden.
+    Reads the file from the email templates directory,
+    automatically injects default values for `current_year`, `frontend_url`
+    (ensuring no trailing slash), and `app_domain` if not explicitly provided,
+    and performs a template placeholder substitution.
+
+    Raises:
+        ValueError: If a required placeholder substitution fails.
+        FileNotFoundError: If the template file `<name>.html` does not exist.
     """
     path = EMAIL_TEMPLATES_DIR / f"{name}.html"
     source = path.read_text(encoding="utf-8")
@@ -27,6 +33,6 @@ def render(name: str, **variables: str) -> str:
         variables["frontend_url"] = variables["frontend_url"].rstrip("/")
 
     try:
-        return Template(source).safe_substitute(variables)
+        return Template(source).substitute(variables)
     except KeyError as exc:
         raise ValueError(f"Missing email template variable: {exc.args[0]}") from exc

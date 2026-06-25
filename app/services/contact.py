@@ -29,17 +29,34 @@ _CACHED_SUBJECTS: list[ContactSubjectOption] = [
 
 
 def get_contact_subjects() -> list[ContactSubjectOption]:
-    """Return all available contact form subject options."""
+    """Retrieves all static contact subject options and their human-readable labels.
+
+    Returns a cached list of ContactSubjectOption objects to avoid recreating lists
+    dynamically.
+    """
     return _CACHED_SUBJECTS
 
 
 def _generate_reference_id() -> str:
+    """Generates a cryptographically secure, unique tracking reference ID for contact
+    submissions.
+
+    Constructs a reference string in the format
+    `CONTACT-<CURRENT_YEAR>-<RANDOM_ALPHANUMERIC_SUFFIX>`.
+    """
     year = datetime.now(UTC).year
     suffix = "".join(secrets.choice(_REFERENCE_ALPHABET) for _ in range(6))
     return f"CONTACT-{year}-{suffix}"
 
 
 async def submit_contact_form(payload: ContactRequest) -> str:
+    """Processes contact form requests, generates reference IDs, and sends emails.
+
+    Generates a unique tracking reference, sends a detailed notification email to the
+    support inbox, and triggers a confirmation receipt to the user's email. Errors
+    during receipt delivery are swallowed on a best-effort basis, and the reference ID
+    is returned.
+    """
     reference_id = _generate_reference_id()
     subject_label = _TOPIC_LABELS.get(payload.subject, payload.subject.value)
 
@@ -49,7 +66,6 @@ async def submit_contact_form(payload: ContactRequest) -> str:
         payload.subject,
     )
 
-    # Notify the team — let errors propagate so the endpoint can return 502
     await send_contact_notification(
         reference_id=reference_id,
         first_name=payload.first_name,
@@ -59,7 +75,6 @@ async def submit_contact_form(payload: ContactRequest) -> str:
         message=payload.message,
     )
 
-    # Best-effort confirmation email to the sender — never fails the request
     try:
         await send_contact_confirmation(
             to_email=str(payload.email),

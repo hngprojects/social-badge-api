@@ -1,8 +1,8 @@
 """Tests for the daily digest and weekly report scheduled jobs.
 
-These call the job coroutines directly rather than running arq, so the
-cron scheduling itself isn't exercised. The cron config is verified
-separately by importing WorkerSettings.
+These call the job coroutines directly rather than running arq, so the cron scheduling
+itself isn't exercised. The cron config is verified separately by importing
+WorkerSettings.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -97,8 +97,7 @@ async def _create_badge_creation_notif(
 def _patch_session_factory(db_session: AsyncSession):
     """Patch _get_session_factory so the worker reuses the test session.
 
-    Returns a context manager that yields the session each time the
-    worker asks for one.
+    Returns a context manager that yields the session each time the worker asks for one.
     """
     from contextlib import asynccontextmanager
 
@@ -196,8 +195,8 @@ async def test_daily_digest_respects_toggle_off(
     organiser: User,
     badge: Badge,
 ) -> None:
-    """An organiser with notify_daily_digest=False gets no digest,
-    even with activity."""
+    """An organiser with notify_daily_digest=False gets no digest, even with
+    activity."""
     today = datetime.now(UTC).replace(hour=8, minute=0, second=0, microsecond=0)
     for _ in range(2):
         await _create_badge_creation_notif(db_session, organiser.id, today, badge.id)

@@ -12,6 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_cloudinary() -> None:
+    """Initializes the Cloudinary client configuration settings.
+
+    Verifies that all required Cloudinary API credentials exist in settings,
+    and raises an exception if any credentials are missing.
+
+    Raises:
+        CloudinaryUploadError: If credentials are not properly configured.
+    """
     if not all(
         [
             settings.CLOUDINARY_CLOUD_NAME,
@@ -32,6 +40,15 @@ def _configure_cloudinary() -> None:
 
 
 def _upload_sync(data: bytes, filename: str) -> str:
+    """Uploads image bytes synchronously to Cloudinary.
+
+    Configures Cloudinary credentials, uploads the binary payload,
+    overwrites existing assets if the filename matches,
+    and invalidates cached CDN versions. Returns the secure CDN URL.
+
+    Raises:
+        CloudinaryUploadError: If the upload operation fails.
+    """
     _configure_cloudinary()
     try:
         result = cloudinary.uploader.upload(
@@ -49,6 +66,13 @@ def _upload_sync(data: bytes, filename: str) -> str:
 
 
 def _delete_sync(public_id: str) -> None:
+    """Destroys a specified asset synchronously on Cloudinary.
+
+    Initializes credentials, executes the destruction call, and invalidates CDN caches.
+
+    Raises:
+        CloudinaryUploadError: If the deletion API call fails.
+    """
     _configure_cloudinary()
     try:
         cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)
@@ -57,6 +81,15 @@ def _delete_sync(public_id: str) -> None:
 
 
 async def upload_logo(data: bytes) -> tuple[str, str]:
+    """Asynchronously uploads a logo image to Cloudinary using a backgroun thread
+    executor.
+
+    Generates a unique random filename, performs a thread-safe synchronous upload,
+    and returns a tuple containing the secure URL and the generated public ID.
+
+    Raises:
+        CloudinaryUploadError: If the upload fails.
+    """
     filename = str(uuid.uuid4())
     public_id = f"{settings.LOGO_FOLDER}/{filename}"
     url = await asyncio.to_thread(_upload_sync, data, filename)
@@ -64,12 +97,19 @@ async def upload_logo(data: bytes) -> tuple[str, str]:
 
 
 async def delete_logo(public_id: str) -> None:
+    """Asynchronously deletes a logo from Cloudinary using a background thread executor.
+
+    Raises:
+        CloudinaryUploadError: If the delete operation fails.
+    """
     await asyncio.to_thread(_delete_sync, public_id)
 
 
 async def delete_asset(public_id: str) -> None:
-    """Delete any Cloudinary asset by public_id.
+    """Asynchronously deletes any Cloudinary asset using its public identifier in a
+    background thread.
 
-    Use this for non-logo assets such as generated badge images.
+    Raises:
+        CloudinaryUploadError: If the delete operation fails.
     """
     await asyncio.to_thread(_delete_sync, public_id)
