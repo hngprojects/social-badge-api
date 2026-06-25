@@ -51,6 +51,11 @@ router = APIRouter()
 async def list_contact_subjects(
     request: Request,
 ) -> SuccessResponse[list[ContactSubjectOption]]:
+    """
+    Retrieves all available subjects for the contact form.
+
+    Serves categories like bug reports, feedback, and billing that users can select. This public endpoint requires no authentication, responds very quickly without database queries by returning static enum values, and is rate-limited to 30 requests per minute per client IP.
+    """
     return SuccessResponse(
         message="Contact subject options retrieved successfully",
         data=get_contact_subjects(),
@@ -111,6 +116,11 @@ async def contact_us(
     request: Request,
     payload: ContactRequest,
 ) -> Any:
+    """
+    Submits a message using the contact form and triggers email notifications.
+
+    Validates the contact request payload, generates a unique reference ID, sends an alert email to the support team, and dispatches a confirmation email to the user. This is a public endpoint open to any visitor, rate-limited to 5 requests per minute per IP to protect against spam. Outgoing SMTP network requests block the thread, so response time depends directly on the email service provider's performance.
+    """
     try:
         reference_id = await submit_contact_form(payload)
     except EmailDeliveryError as exc:

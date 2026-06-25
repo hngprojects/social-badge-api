@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 async def seed_roles(admin_emails: list[str] | None = None) -> None:
+    """
+    Populates the database with default application roles.
+
+    Creates specified roles if they do not already exist, and associates any existing
+    users matching the provided administrator email addresses with the 'admin' role.
+    """
     if admin_emails is None:
         admin_emails = ADMIN_SEED_EMAILS
 
@@ -77,9 +83,11 @@ async def seed_roles(admin_emails: list[str] | None = None) -> None:
 
 async def seed_platform_templates() -> None:
     """
-    Insert platform templates whose titles are not yet present.
-    Updates canvas_data and category on existing rows so the seed
-    stays in sync with the spec without losing existing IDs.
+    Seeds the database with platform-wide default templates.
+
+    Inserts predefined templates that are not currently present,
+    removes deprecated templates, and updates existing templates to match
+    the current template definitions and layouts.
     """
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(PlatformTemplate))
@@ -170,6 +178,11 @@ async def seed_platform_templates() -> None:
 
 
 async def main() -> None:
+    """
+    Runs the database seeding process for default roles and platform templates.
+
+    Configures logging and calls the individual seeders sequentially.
+    """
     logging.basicConfig(level=logging.INFO)
     await seed_roles()
     await seed_platform_templates()

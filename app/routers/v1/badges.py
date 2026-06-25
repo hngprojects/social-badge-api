@@ -68,7 +68,11 @@ _JPEG_MAGIC = b"\xff\xd8\xff"
 
 
 def _is_valid_image(data: bytes) -> bool:
-    """Return True only if bytes start with a recognised PNG, JPEG, or SVG signature."""
+    """
+    Checks if the provided byte data starts with a recognized PNG, JPEG, or SVG signature.
+
+    This internal utility function validates the binary content signature (magic bytes) using very fast in-memory prefix checks. No authentication or rate limiting is applied.
+    """
     if data[:8] == _PNG_MAGIC or data[:3] == _JPEG_MAGIC:
         return True
 
@@ -123,7 +127,12 @@ async def create_instance(
     current_user: CurrentUser,
     payload: CreateBadgeRequest,
 ) -> SuccessResponse[CreateBadgeResponse]:
-    """Create a new organiser badge from a platform template."""
+    """
+    Creates a new customizable badge instance linked to a platform design template.
+
+    Requires an authenticated organiser. The handler queries the database to verify the platform template exists and is active, inserts a new badge record, and commits the transaction under a rate limit of 30 requests per minute per IP.
+    """
+
     try:
         instance = await create_badge(
             session=session,
@@ -213,7 +222,12 @@ async def list_instances(
     page: int = Query(default=1, ge=1, description="Page number (1-based)."),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page."),
 ) -> SuccessResponse[BadgeListResponse]:
-    """Return paginated badges for the authenticated organiser."""
+    """
+    Retrieves a paginated list of all draft and published badges owned by the logged-in organiser.
+
+    Requires an authenticated organiser session. The query executes offset and limit pagination on the database badges table, sorts the results by their update date, and enforces a rate limit of 60 requests per minute per IP.
+    """
+
     badges, total = await list_badges(
         session=session,
         organiser_id=current_user.id,
@@ -299,7 +313,12 @@ async def get_analytics(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[BadgeAnalyticsResponse]:
-    """Return aggregated badge metrics for the authenticated organiser."""
+    """
+    Retrieves summary analytics and template usage statistics for all of the organiser's badges.
+
+    Requires an authenticated organiser session. The database queries aggregate total badge counts, drafts, active badges, and shares, which can involve joins across larger datasets. The endpoint is rate-limited to 60 requests per minute per IP.
+    """
+
     (
         total,
         active,
@@ -349,7 +368,12 @@ async def get_single_badge(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[BadgeDetailResponse]:
-    """Return a single badge by ID for the authenticated organiser."""
+    """
+    Retrieves the configuration fields and template details of a specific badge by its ID.
+
+    Requires the caller to be the authenticated organiser who owns the target badge. The query executes a fast single primary key database lookup under a rate limit of 60 requests per minute per IP.
+    """
+
     try:
         badge = await get_badge_by_id(
             session=session,
@@ -399,7 +423,12 @@ async def publish(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[PublishedBadgeResponse]:
-    """Publish a badge."""
+    """
+    Publishes a badge to make it publicly accessible and generates a unique sharing slug on first publish.
+
+    Requires the caller to be the authenticated organiser who owns the badge. The handler updates the badge's published state in the database and commits the changes under a rate limit of 30 requests per minute per IP.
+    """
+
     try:
         badge = await publish_badge(
             session=session,
@@ -452,7 +481,12 @@ async def unpublish(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[PublishedBadgeResponse]:
-    """Unpublish a badge."""
+    """
+    Unpublishes a badge to retract public access while preserving its sharing slug.
+
+    Requires the caller to be the authenticated organiser who owns the badge. The handler performs a database update to set the publishing flag to false, committing the changes under a rate limit of 30 requests per minute per IP.
+    """
+
     try:
         badge = await unpublish_badge(
             session=session,
@@ -502,7 +536,12 @@ async def duplicate(
     current_user: CurrentUser,
     id: UUID,
 ) -> SuccessResponse[DuplicateBadgeResponse]:
-    """Duplicate a badge into a new draft."""
+    """
+    Duplicates an existing badge into a new draft template.
+
+    Clones all configuration variables, layout settings, and associated hashtags into a new unpublished badge copy. Requires the caller to be the authenticated organiser who owns the original badge, performing multiple database read and write operations under a rate limit of 30 requests per minute per IP.
+    """
+
     try:
         copy = await duplicate_badge(
             session=session,
@@ -552,7 +591,11 @@ async def remove_badge(
     current_user: CurrentUser,
     id: UUID,
 ) -> None:
-    """Permanently delete a badge and its Cloudinary assets."""
+    """
+    Permanently deletes a badge and triggers background deletion of its Cloudinary assets.
+
+    Requires the caller to be the authenticated organiser who owns the badge. This handler performs cascading deletions across related database tables and initiates asynchronous HTTP requests to remove remote assets, subject to a rate limit of 30 requests per minute per IP.
+    """
     try:
         await delete_badge(
             session=session,
@@ -600,7 +643,12 @@ async def update_badge(
     id: UUID,
     payload: EditBadgeRequest,
 ) -> SuccessResponse[BadgeDetailResponse]:
-    """Apply a partial update to a badge."""
+    """
+    Edits the configurations and associated hashtags of an existing badge.
+
+    Performs partial updates on the badge row and replaces the list of associated hashtags by deleting old records and adding new ones. Requires the caller to be the authenticated organiser who owns the badge and commits all changes under a rate limit of 30 requests per minute per IP.
+    """
+
     field_updates = payload.model_dump(exclude_unset=True)
     new_hashtags: list[str] | None = field_updates.pop("hashtags", None)
     update_hashtags: bool = "hashtags" in payload.model_fields_set
@@ -686,15 +734,18 @@ async def upload_logo(
     current_user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> SuccessResponse[LogoUploadResponse]:
-    """Upload or replace the logo for a badge."""
+    """
+    Uploads and attaches a brand logo image to a badge.
+
+    Validates the uploaded file's type and size, executes blocking external HTTP requests to upload the new asset and delete the previous one from Cloudinary, and updates the database record. This handler requires the authenticated organiser to own the badge and is rate-limited to 10 requests per minute per IP.
+    """
+
     if file.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Unsupported file type. Only PNG, JPG, and SVG images are allowed.",
         )
 
-    # Read one byte beyond the limit so we can detect oversized files without
-    # loading an arbitrarily large upload into memory.
     image_data = await file.read(_MAX_LOGO_BYTES + 1)
     if len(image_data) > _MAX_LOGO_BYTES:
         raise HTTPException(
@@ -702,7 +753,6 @@ async def upload_logo(
             detail="File size exceeds the 2 MB limit.",
         )
 
-    # Verify the actual file signature — content_type is client-controlled.
     if not _is_valid_image(image_data):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -730,8 +780,8 @@ async def upload_logo(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=(
-                "Logo upload failed. The upload service is unavailable"
-                " or rejected the file."
+                "Logo upload failed. "
+                "The upload service is unavailable or rejected the file."
             ),
         ) from exc
 
@@ -801,13 +851,10 @@ async def get_participant_page(
         ),
     ),
 ) -> SuccessResponse[PublicBadgePageResponse]:
-    """Return public-facing badge data for the participant page.
+    """
+    Returns public-facing badge configuration data for the participant landing page.
 
-    Access rules:
-    - access_type == 0 (public): data is returned unconditionally.
-    - access_type == 1 (private): ``access_code`` query param must be present
-      and match the organiser-defined code.  Omitting the param returns 401 so
-      the frontend can prompt the participant to enter the code.
+    Retrieves display details by querying the database using an index on the slug. If the badge is configured as private, the caller must supply the matching access code. This public endpoint requires no session cookies and is rate-limited to 60 requests per minute per IP.
     """
     try:
         badge = await get_public_badge_by_slug(
@@ -828,7 +875,6 @@ async def get_participant_page(
             )
 
         if not badge.access_code:
-            # Failsafe: private badge with no stored code — fail closed.
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid access code.",
@@ -879,7 +925,11 @@ async def increment_creation(
     session: DBSession,
     slug: str,
 ) -> SuccessResponse[None]:
-    """Atomically increment the creation counter for a public badge."""
+    """
+    Atomically increments the badge creation counter for a public badge.
+
+    Tracks the total number of generated badges by running an atomic increment database update query on the badges table. This public endpoint requires no authentication and is rate-limited to 60 requests per minute per IP.
+    """
     try:
         await increment_badge_creation_count(session=session, slug=slug)
     except PublicBadgeNotFoundError as exc:
@@ -919,7 +969,11 @@ async def increment_share(
     slug: str,
     background_tasks: BackgroundTasks,
 ) -> SuccessResponse[None]:
-    """Atomically increment the share counter for a public badge."""
+    """
+    Atomically increments the share counter for a public badge in a background task.
+
+    Performs a fast database existence check by slug and schedules the atomic increment update to run asynchronously, returning the response immediately. This public endpoint requires no authentication and is rate-limited to 60 requests per minute per IP.
+    """
     try:
         await get_public_badge_by_slug(session=session, slug=slug)
     except PublicBadgeNotFoundError as exc:

@@ -1,11 +1,3 @@
-"""arq worker for scheduled notification jobs.
-
-Runs the daily digest and weekly report jobs on a cron schedule.
-
-Run locally:
-    uv run arq app.workers.notification_worker.WorkerSettings
-"""
-
 from arq.connections import RedisSettings
 from arq.cron import cron
 
@@ -14,12 +6,29 @@ from app.workers.digest_jobs import send_daily_digests, send_weekly_reports
 
 
 class WorkerSettings:
-    """arq worker configuration.
+    """
+    arq worker configuration settings.
 
-    Uses the same Redis connection as the rest of the app.
+    Purpose:
+        Configures the arq Redis background worker settings,
+        defining the Redis connection parameters and setting up cron schedules
+        for periodic jobs like daily digests and weekly reports.
 
-    Cron times are in UTC. Update the schedule (or add a per-org timezone
-    column on User) once product confirms the desired wall-clock time.
+    Authentication Context:
+        None.
+        Executed in the background by the arq CLI system process.
+
+    Performance Implications:
+        Uses a shared Redis connection pool.
+        Cron job execution times should be staggered if resource utilization spikes.
+
+    Rate Limiting:
+        Governed by cron schedule definitions (daily_digest at 20:00 UTC daily,
+        weekly_report at 20:00 UTC Sundays).
+
+    Dependencies:
+        Depends on `settings.REDIS_URL`, `send_daily_digests`,
+        and `send_weekly_reports`.
     """
 
     redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))

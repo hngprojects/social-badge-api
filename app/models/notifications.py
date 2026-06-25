@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 
 
 class UserNotificationPreference(Base):
+    """
+    Database representation of user-specific notification preferences.
+
+    Configures opt-in/opt-out toggles for various email alerts, daily digests,
+    and weekly reporting.
+    """
+
     __tablename__ = "user_notification_preferences"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
@@ -52,12 +59,26 @@ class UserNotificationPreference(Base):
 
 
 class NotificationType(enum.StrEnum):
+    """
+    Enumeration of supported notification types within the system.
+
+    Defines categories such as badge creation alerts, daily digests,
+    and weekly reports.
+    """
+
     BADGE_CREATION = "badge_alert"
     DAILY_DIGEST = "daily_digest"
     WEEKLY_REPORT = "weekly_report"
 
 
 class Notification(Base):
+    """
+    Database representation of an individual user notification.
+
+    Stores the notification type, message title, body text, read/unread status,
+    and optional contextual metadata (extra data) for system alerts and communications.
+    """
+
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(

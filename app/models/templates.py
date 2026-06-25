@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 
 
 class PlatformTemplate(Base):
+    """
+    Database representation of a platform-wide reusable badge template.
+
+    Stores default layout configuration (canvas data), categorizations,
+    preview thumbnails, active status, usage statistics (total badges made),
+    and relationships to generated badges.
+    """
+
     __tablename__ = "platform_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -33,7 +41,6 @@ class PlatformTemplate(Base):
         DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
 
-    # Relationship to Badge (formerly OrganiserTemplate)
     badges: Mapped[list[Badge]] = relationship(
         "Badge",
         back_populates="platform_template",

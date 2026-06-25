@@ -16,6 +16,11 @@ from app.core.security import validate_password_strength
 
 
 class SignupRequest(BaseModel):
+    """
+    Data transfer object representing a signup request, validating name sanitization,
+    email format, and password complexity constraints.
+    """
+
     first_name: str = Field(
         ...,
         description="The first name of the organiser.",
@@ -47,6 +52,10 @@ class SignupRequest(BaseModel):
     @field_validator("first_name")
     @classmethod
     def validate_first_name(cls, val: str) -> str:
+        """
+        Sanitizes and validates the first name, ensuring it contains no HTML tags
+        and is not empty.
+        """
         if not val or not val.strip():
             raise ValueError("First name cannot be empty")
 
@@ -55,6 +64,9 @@ class SignupRequest(BaseModel):
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
+        """
+        Sanitizes and validates the optional last name, removing HTML tags if present.
+        """
         if val is None:
             return None
 
@@ -67,6 +79,10 @@ class SignupRequest(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
+        """
+        Normalizes the email address input by stripping whitespace and converting it
+        to lowercase.
+        """
         if isinstance(val, str):
             return val.strip().lower()
 
@@ -75,14 +91,21 @@ class SignupRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, val: str) -> str:
+        """
+        Validates password input strength and enforces a maximum size constraint
+        of 500 bytes.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("Password must not exceed 500 bytes")
 
         return validate_password_strength(val)
 
 
-# Schema for the resend verification token request payload. Emmanuel
 class ResendVerificationRequest(BaseModel):
+    """
+    Data transfer object representing a request to resend the verification email link.
+    """
+
     email: EmailStr = Field(
         ...,
         description="The email address to resend the verification token to.",
@@ -92,12 +115,21 @@ class ResendVerificationRequest(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
+        """
+        Normalizes the email address input by trimming surrounding whitespace
+        and converting it to lowercase.
+        """
         if isinstance(val, str):
             return val.strip().lower()
         return val
 
 
 class VerifyEmailRequest(BaseModel):
+    """
+    Data transfer object containing the unique one-time token needed
+    to verify a user's email address.
+    """
+
     token: str = Field(
         ...,
         description="The one-time verification token",
@@ -106,6 +138,11 @@ class VerifyEmailRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    """
+    Data transfer object representing a login request, validating email format
+    and password length limits.
+    """
+
     email: EmailStr = Field(
         ...,
         description="A valid email address that will be used for login.",
@@ -123,6 +160,9 @@ class LoginRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password_length(cls, val: str) -> str:
+        """
+        Validates that the password length does not exceed 500 characters.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("Password must not exceed 500 characters")
 
@@ -130,6 +170,11 @@ class LoginRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
+    """
+    Data transfer object representing a forgot-password request,
+    containing the user's registered email address.
+    """
+
     email: EmailStr = Field(
         ...,
         description="The email address associated with the user account.",
@@ -139,12 +184,21 @@ class ForgotPasswordRequest(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
+        """
+        Normalizes the email address input by trimming surrounding whitespace
+        and converting it to lowercase.
+        """
         if isinstance(val, str):
             return val.strip().lower()
         return val
 
 
 class ResetPasswordRequest(BaseModel):
+    """
+    Data transfer object representing a password reset request,
+    validating password match and strength requirements.
+    """
+
     token: str = Field(
         ...,
         min_length=1,
@@ -176,6 +230,10 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, val: str) -> str:
+        """
+        Validates that the new password does not exceed 500 characters
+        and meets strength requirements.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("Password must not exceed 500 characters")
 
@@ -183,19 +241,20 @@ class ResetPasswordRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_password_match(self) -> ResetPasswordRequest:
+        """
+        Ensures that the new password and confirm password fields match exactly.
+        """
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 
 
-class GoogleExchangeRequest(BaseModel):
-    code: str = Field(
-        ...,
-        description="The one-time exchange code received after Google OAuth callback.",
-    )
-
-
 class UserResponse(BaseModel):
+    """
+    Data transfer object representing the user profile data response,
+    mapping from database attributes.
+    """
+
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
     id: UUID = Field(
@@ -249,16 +308,20 @@ class UserResponse(BaseModel):
     @field_validator("id", mode="before")
     @classmethod
     def convert_uuid(cls, val: Any) -> Any:
+        """
+        Converts the user ID value to a string representation if required.
+        """
         if val is not None and not isinstance(val, UUID | str | bytes):
             return str(val)
         return val
 
 
 class LoginUserResponse(BaseModel):
-    """Minimal user payload returned only on login.
+    """
+    Minimal user payload returned only on login.
 
-    Deliberately excludes internal IDs, timestamps, and third-party URLs
-    to reduce the attack surface of the authentication response.
+        Deliberately excludes internal IDs, timestamps, and third-party URLs
+        to reduce the attack surface of the authentication response.
     """
 
     first_name: str = Field(..., json_schema_extra={"example": "Jane"})
@@ -271,6 +334,11 @@ class LoginUserResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
+    """
+    Data transfer object representing the successful login response,
+    containing the user's minimal profile.
+    """
+
     user: LoginUserResponse = Field(
         ...,
         description="Minimal user profile returned on successful authentication.",
@@ -278,7 +346,10 @@ class LoginResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    """Schema representing an active session."""
+    """
+    Data transfer object representing detailed information about an active user session,
+    mapping from database attributes.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -296,7 +367,9 @@ class SessionResponse(BaseModel):
 
 
 class SessionListResponse(BaseModel):
-    """Schema for a paginated list of active sessions."""
+    """
+    Data transfer object representing a paginated list of active user sessions.
+    """
 
     sessions: list[SessionResponse]
     total: int
@@ -305,6 +378,9 @@ class SessionListResponse(BaseModel):
 
 
 class LogoutAllResponse(BaseModel):
-    """Schema for the response of a logout-all request."""
+    """
+    Data transfer object representing the response after revoking all active user
+    sessions, indicating the count of revoked sessions.
+    """
 
     sessions_revoked: int = Field(..., description="Number of sessions terminated.")

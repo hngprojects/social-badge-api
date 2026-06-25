@@ -4,6 +4,12 @@ import bcrypt
 
 
 def hash_password(password: str) -> str:
+    """
+    Hashes a plain-text password using bcrypt.
+
+    Encodes the input string to UTF-8 and uses `bcrypt.gensalt` to create
+    a secure hash before decoding it back to a UTF-8 string.
+    """
     pwd_bytes = password.encode("utf-8")
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
@@ -11,6 +17,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verifies a plain-text password against a hashed representation.
+
+    Encodes inputs to UTF-8, checks for bcrypt's 72-byte password limitation,
+    and returns False on failure/type mismatches.
+    """
     try:
         password_byte_enc = plain_password.encode("utf-8")
         hashed_password_byte_enc = hashed_password.encode("utf-8")
@@ -27,10 +39,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def validate_password_strength(val: str) -> str:
-    """Validates that a password meets complexity requirements.
+    """
+    Validates that a password meets length and complexity criteria.
 
-    These rules ensure high entropy and protect against brute-force attacks.
-    Bcrypt has a 72-byte limit on password length which we enforce.
+    Raises:
+        ValueError: If the password does not meet standard entropy and complexity rules
+        (8-72 characters, containing uppercase, lowercase, numbers, and symbols).
     """
     if len(val.encode("utf-8")) > 72:
         raise ValueError("Password must be at most 72 bytes long")

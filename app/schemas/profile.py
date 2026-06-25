@@ -15,7 +15,10 @@ from app.core.security import validate_password_strength
 
 
 class UpdateProfileRequest(BaseModel):
-    """Request schema for updating user profile."""
+    """
+    Data transfer object representing a request to update user profile information,
+    validating names, email normalization, and job role constraints.
+    """
 
     first_name: str | None = Field(
         None,
@@ -42,6 +45,10 @@ class UpdateProfileRequest(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, val: Any) -> Any:
+        """
+        Trims surrounding whitespace and converts the email address to lowercase
+        if a string email is provided.
+        """
         if val is None:
             return val
         if isinstance(val, str):
@@ -51,6 +58,10 @@ class UpdateProfileRequest(BaseModel):
     @field_validator("first_name")
     @classmethod
     def validate_first_name(cls, val: str | None) -> str | None:
+        """
+        Validates the optional first name by ensuring it is not empty when provided
+        and contains no HTML content.
+        """
         if val is not None:
             val = val.strip()
             if not val:
@@ -63,6 +74,10 @@ class UpdateProfileRequest(BaseModel):
     @field_validator("last_name")
     @classmethod
     def validate_last_name(cls, val: str | None) -> str | None:
+        """
+        Sanitizes and validates the optional last name by stripping whitespace
+        and removing HTML tags.
+        """
         if val is None:
             return None
 
@@ -75,6 +90,10 @@ class UpdateProfileRequest(BaseModel):
     @field_validator("role")
     @classmethod
     def validate_role(cls, val: str | None) -> str | None:
+        """
+        Sanitizes and validates the optional user role or job title
+        by stripping whitespace and removing HTML tags.
+        """
         if val is None:
             return val
         val = val.strip()
@@ -84,7 +103,10 @@ class UpdateProfileRequest(BaseModel):
 
 
 class DeleteProfileResponse(BaseModel):
-    """Response schema for successful profile deletion."""
+    """
+    Data transfer object representing the response after a user profile
+    is successfully deleted, returning the unique ID of the deleted user.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -96,6 +118,12 @@ class DeleteProfileResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
+    """
+    Data transfer object representing a request to change the user's password,
+    requiring the current password, a strong new password,
+    and matching password confirmation.
+    """
+
     current_password: str = Field(
         ...,
         description="The user's current password.",
@@ -118,6 +146,9 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("current_password")
     @classmethod
     def validate_current_password_length(cls, val: str) -> str:
+        """
+        Enforces a maximum length constraint of 500 bytes on the current password input.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("current_password must not exceed 500 bytes")
         return val
@@ -125,6 +156,10 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, val: str) -> str:
+        """
+        Enforces a maximum length constraint of 500 bytes on the new password
+        and validates its strength.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("new_password must not exceed 500 bytes")
         return validate_password_strength(val)
@@ -132,18 +167,26 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("confirm_password")
     @classmethod
     def validate_confirm_password_length(cls, val: str) -> str:
+        """
+        Enforces a maximum length constraint of 500 bytes on the password confirmation
+        input.
+        """
         if len(val.encode("utf-8")) > 500:
             raise ValueError("confirm_password must not exceed 500 bytes")
         return val
 
     @model_validator(mode="after")
     def passwords_must_match(self) -> ChangePasswordRequest:
+        """
+        Ensures that the new password and confirm password fields match exactly.
+        """
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
 
     @model_validator(mode="after")
     def new_must_differ_from_current(self) -> ChangePasswordRequest:
+        """Ensures that the new password differs from the current password."""
         if self.current_password == self.new_password:
             raise ValueError("New password must differ from the current password")
         return self

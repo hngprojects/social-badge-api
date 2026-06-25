@@ -1,5 +1,3 @@
-"""Profile management endpoints."""
-
 import logging
 
 from fastapi import (
@@ -35,32 +33,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Max file size: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
-
-# Chunk size for reading files (8 KB)
 CHUNK_SIZE = 8 * 1024
 
-# Magic bytes (file signatures) for supported image formats
-# These are the first few bytes that identify the file type
 IMAGE_MAGIC_BYTES = {
-    b"\xff\xd8\xff": "image/jpeg",  # JPEG
-    b"\x89\x50\x4e\x47": "image/png",  # PNG
-    b"\x47\x49\x46\x38": "image/gif",  # GIF (GIF87a and GIF89a)
+    b"\xff\xd8\xff": "image/jpeg",
+    b"\x89\x50\x4e\x47": "image/png",
+    b"\x47\x49\x46\x38": "image/gif",
 }
 
 
 def _validate_image_content(content: bytes) -> str:
-    """Validate image content by checking magic bytes (file signature).
+    """
+    Validates image content by checking magic bytes for supported formats (JPEG, PNG, GIF).
 
-    Args:
-        content: The file content bytes to validate.
-
-    Returns:
-        The MIME type of the validated image.
-
-    Raises:
-        HTTPException: If the content doesn't match supported image formats.
+    This internal utility function inspects the header bytes of the uploaded file and inherits context from calling endpoints. It uses a very fast in-memory prefix comparison with no rate limiting applied.
     """
     if len(content) < 4:
         raise HTTPException(
@@ -68,7 +55,6 @@ def _validate_image_content(content: bytes) -> str:
             detail="File is too small to be a valid image",
         )
 
-    # Check magic bytes to determine actual file type
     for magic_bytes, mime_type in IMAGE_MAGIC_BYTES.items():
         if content.startswith(magic_bytes):
             return mime_type
@@ -80,20 +66,10 @@ def _validate_image_content(content: bytes) -> str:
 
 
 async def _read_file_with_size_check(file: UploadFile, max_size: int) -> bytes:
-    """Read file in chunks while enforcing size limit.
+    """
+    Reads incoming file streams in chunks while enforcing size limits.
 
-    Reads the file in chunks and validates the total size does not exceed
-    max_size. Fails early if size limit is exceeded to prevent memory exhaustion.
-
-    Args:
-        file: The uploaded file to read.
-        max_size: Maximum allowed file size in bytes.
-
-    Returns:
-        The complete file content.
-
-    Raises:
-        HTTPException: If the file size exceeds the limit.
+    Aborts reading early if the accumulated size exceeds the limit, preventing excessively large files from loading into server memory. This internal utility function uses no authentication or rate limiting.
     """
     chunks: list[bytes] = []
     total_size = 0
@@ -105,7 +81,6 @@ async def _read_file_with_size_check(file: UploadFile, max_size: int) -> bytes:
 
         total_size += len(chunk)
 
-        # Check size limit early to prevent memory exhaustion
         if total_size > max_size:
             max_mb = int(max_size / 1024 / 1024)
             raise HTTPException(
@@ -135,7 +110,12 @@ async def get_profile(
     request: Request,
     current_user: CurrentUser,
 ) -> SuccessResponse[UserResponse]:
-    """Retrieve the authenticated user's profile."""
+    """
+    Retrieves the authenticated organiser's profile details.
+
+    Requires authenticated session access. It introduces extremely low overhead by returning the user entity already loaded by the dependencies and is rate-limited to 10 requests per minute per IP.
+    """
+
     return SuccessResponse(
         message="Profile retrieved successfully",
         data=UserResponse.model_validate(current_user),
@@ -167,11 +147,12 @@ async def update_user_profile(
     current_user: CurrentUser,
     payload: UpdateProfileRequest,
 ) -> SuccessResponse[UserResponse]:
-    """Update the authenticated user's profile.
-
-    Allows updating first_name, last_name, email, and/or role.
-    At least one field must be provided to make a valid update request.
     """
+    Updates profile details of the authenticated organiser.
+
+    Modifies editable details such as names, email, and roles. This endpoint requires authenticated session access, executes database update queries on the users table immediately, and is rate-limited to 5 requests per minute per IP.
+    """
+
     if (
         payload.first_name is None
         and payload.last_name is None
@@ -224,12 +205,12 @@ async def delete_user_profile(
     redis: RedisClient,
     current_user: CurrentUser,
 ) -> SuccessResponse[DeleteProfileResponse]:
-    """Delete the authenticated user's profile.
-
-    Permanently removes the user account and all associated data,
-    including all badge assets and the profile photo from Cloudinary.
-    Invalidates all sessions. This action is irreversible.
     """
+    Permanently deletes the user profile and all associated data.
+
+    Removes the user record, associated refresh tokens, and preferences, and deletes browser session cookies. This endpoint requires authenticated session access, runs heavy cascading deletes across multiple database tables, and is rate-limited to 5 requests per minute per IP.
+    """
+
     user_id = current_user.id
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
@@ -242,7 +223,6 @@ async def delete_user_profile(
         refresh_token=refresh_token,
     )
 
-    # Clear auth cookies
     response.delete_cookie(
         key=settings.REFRESH_COOKIE,
         secure=settings.COOKIE_SECURE,
@@ -294,20 +274,14 @@ async def upload_profile_photo_endpoint(
         ..., description="Image file (JPEG, PNG, GIF)"
     ),
 ) -> SuccessResponse[UserResponse]:
-    """Upload or update the authenticated user's profile photo.
-
-    Accepts image files and uploads them to Cloudinary.
-    The previous profile photo is automatically deleted if it exists.
-
-    Security measures:
-    - File size is validated during streaming to prevent memory exhaustion
-    - File content is validated by magic bytes to prevent spoofed formats
     """
-    # Read file in chunks with size limit enforcement
+    Uploads or updates the authenticated user's profile photo.
+
+    Validates file size and format, executes outgoing Cloudinary network calls to save the new image and delete the old asset, and updates the user's photo URL. This endpoint requires authenticated session access, involves block-wise stream reading, and is rate-limited to 10 requests per minute per IP.
+    """
+
     content = await _read_file_with_size_check(file, MAX_FILE_SIZE)
 
-    # Validate file type by inspecting actual content (magic bytes)
-    # This prevents clients from spoofing the content_type header
     actual_mime_type = _validate_image_content(content)
 
     logger.info(
@@ -360,7 +334,12 @@ async def remove_profile_photo_endpoint(
     session: DBSession,
     current_user: CurrentUser,
 ) -> SuccessResponse[UserResponse]:
-    """Remove the authenticated user's profile photo."""
+    """
+    Removes the authenticated user's profile photo.
+
+    Deletes the profile image from Cloudinary and clears the photo URL in the database. This endpoint requires authenticated session access, performs a remote network delete request and database write transaction, and is rate-limited to 10 requests per minute per IP.
+    """
+
     updated_user = await remove_profile_photo(session=session, user=current_user)
 
     logger.info("Removed profile photo for user %s", current_user.id)
@@ -400,6 +379,12 @@ async def change_user_password(
     current_user: CurrentUser,
     payload: ChangePasswordRequest,
 ) -> SuccessResponse[None]:
+    """
+    Changes the authenticated user's password.
+
+    Verifies the current password, performs CPU-heavy password hashing to encrypt the new password, updates the database, and invalidates other active sessions. This endpoint requires authenticated session access, runs a write transaction on the database, and is rate-limited to 5 requests per minute per IP.
+    """
+
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     try:

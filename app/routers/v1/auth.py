@@ -91,6 +91,12 @@ async def get_current_user_profile(
     request: Request,
     current_user: CurrentUser,
 ) -> SuccessResponse[UserResponse]:
+    """
+    Retrieves the profile information of the currently authenticated organizer.
+
+    Requires a valid user session, rejecting unauthenticated requests with a 401 Unauthorized error. Because the profile data is already fetched by the `CurrentUser` dependency, this handler introduces minimal overhead and is rate-limited to 5 requests per minute per client IP.
+    """
+
     return SuccessResponse(
         message="Profile retrieved successfully",
         data=UserResponse.model_validate(current_user),
@@ -148,6 +154,12 @@ async def register(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
+    """
+    Registers a new organiser account.
+
+    Validates password strength, hashes it, saves the user to the database, creates a verification token in Redis, and dispatches a verification email. This public endpoint performs CPU-intensive password hashing, executes write operations to both the database and Redis, and initiates an outgoing SMTP request under a rate limit of 10 requests per minute per client IP.
+    """
+
     try:
         user, email_sent = await signup(session, redis, payload)
         if email_sent:
@@ -219,6 +231,12 @@ async def resend_verification(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
+    """
+    Resends the email verification link to an unverified user's email address.
+
+    Queries the database for the user status, generates and writes a verification token to Redis, and dispatches an SMTP email request. This public endpoint returns a generic success message to prevent user enumeration and is rate-limited to 3 requests per minute per client IP.
+    """
+
     try:
         await resend_verification_email(session, redis, payload)
     except EmailAlreadyVerifiedError as exc:
@@ -277,7 +295,11 @@ async def reset_organizer_password(
     session: DBSession,
     redis: RedisClient,
 ) -> SuccessResponse[None]:
-    """Reset a user's password using a valid password reset token."""
+    """
+    Resets the password for an organiser using a valid reset token.
+
+    Validates the token against Redis, hashes the new password using a CPU-intensive function, updates the user record in the database, and deletes the token. This token-authorized endpoint is rate-limited to 5 requests per minute per client IP.
+    """
     try:
         await reset_password(session, redis, payload)
     except InvalidPasswordResetTokenError as exc:
@@ -342,6 +364,12 @@ async def login(
     redis: RedisClient,
     response: Response,
 ) -> SuccessResponse[LoginResponse]:
+    """
+    Authenticates an organiser and establishes a new login session.
+
+    Verifies credentials, checks and increments failure limits in Redis, writes a new session row to the database, and issues HttpOnly access and refresh cookies. This public endpoint features CPU-intensive password hashing and is limited to 10 requests per minute per IP, locking accounts after 5 consecutive failures.
+    """
+
     try:
         user, access_token, refresh_token = await signin(
             session, redis, payload, request
@@ -417,6 +445,12 @@ async def refresh(
     session: DBSession,
     redis: RedisClient,
 ) -> SuccessResponse[None]:
+    """
+    Rotates and issues a new set of access and refresh tokens.
+
+    Validates the client's current refresh token cookie, updates the session record in the database, and returns rotated HttpOnly cookies. This cookie-authorized endpoint requires a database query and update write, and is rate-limited to 10 requests per minute per IP.
+    """
+
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     if not refresh_token:
         raise HTTPException(
@@ -465,6 +499,12 @@ async def logout(
     session: DBSession,
     redis: RedisClient,
 ) -> None:
+    """
+    Logs out the current organiser by invalidating their active session.
+
+    Deletes the active refresh token row from the database and deletes browser cookies. This endpoint requires valid session cookies, performs a single database delete operation, and is rate-limited to 10 requests per minute per IP.
+    """
+
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE)
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
 
@@ -520,6 +560,12 @@ async def forgot_password(
     session: DBSession,
     redis: RedisClient,
 ) -> Any:
+    """
+    Requests a password reset link email.
+
+    Checks database for email existence, generates a secure reset token, writes it to Redis with a time-to-live parameter, and sends a reset link via a blocking SMTP network request. This public endpoint returns a generic success response to prevent account enumeration and is rate-limited to 3 requests per minute per client IP.
+    """
+
     try:
         await request_password_reset(session, redis, payload)
     except EmailDeliveryError as exc:
@@ -559,6 +605,12 @@ async def verify_email(
     redis: RedisClient,
     payload: VerifyEmailRequest,
 ) -> Any:
+    """
+    Verifies a user's email address using a verification token.
+
+    Performs a Redis GETDEL query to read and remove the token, checks the user in the database, marks them verified, creates a new login session, and schedules an onboarding background task. This token-based endpoint requires multiple database writes and is rate-limited to 10 requests per minute per IP.
+    """
+
     token_hash = hash_token(payload.token)
     token_key = f"verify:{token_hash}"
     user_id = await redis.getdel(token_key)
@@ -629,6 +681,12 @@ async def verify_email(
 )
 @limiter.limit("10/minute")
 async def google_login(request: Request, redis: RedisClient) -> RedirectResponse:
+    """
+    Starts the Google OAuth login or signup flow.
+
+    Generates the Google authentication URL redirect target with state parameters and saves the state token to Redis to prevent cross-site request forgery attacks. This public endpoint is rate-limited to 10 requests per minute per IP.
+    """
+
     auth_url = await build_google_auth_url(redis)
     return RedirectResponse(
         url=auth_url,
@@ -673,6 +731,12 @@ async def google_callback(
     code: str = Query(..., description="Google authorization code"),
     state: str = Query(..., description="OAuth state used to prevent CSRF"),
 ) -> RedirectResponse:
+    """
+    Handles the redirect callback from the Google OAuth service.
+
+    Exchanges the authorization code for user details, creating or retrieving the user record, writing a new session to the database, and redirecting the user to the frontend dashboard or onboarding. This callback blocks on external network calls to Google's token endpoint and is rate-limited to 10 requests per minute per IP.
+    """
+
     try:
         user, is_new_user = await authenticate_with_google(session, redis, code, state)
     except GoogleOAuthError as exc:
@@ -736,7 +800,12 @@ async def list_sessions(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> SuccessResponse[SessionListResponse]:
-    """Return paginated active sessions for the authenticated user."""
+    """
+    Lists active sessions for the current authenticated user.
+
+    Queries the database refresh tokens table filtered by user ID, utilizing offset and limit pagination, and identifies which session matches the caller's request cookies. This endpoint requires an active authenticated user session and is rate-limited to 10 requests per minute per IP.
+    """
+
     raw_refresh = request.cookies.get(settings.REFRESH_COOKIE)
     current_family_id = await _resolve_current_family_id(session, raw_refresh)
 
@@ -777,7 +846,12 @@ async def logout_all(
     redis: RedisClient,
     current_user: CurrentUser,
 ) -> SuccessResponse[LogoutAllResponse]:
-    """Revoke all sessions for the current user."""
+    """
+    Revokes all active sessions and tokens for the user across all devices.
+
+    Bulk deletes all user refresh tokens from the database, writes the current access token's JTI to the Redis blacklist with a TTL, and deletes the browser cookies. This endpoint requires an active user session and is rate-limited to 5 requests per minute per IP.
+    """
+
     access_token = request.cookies.get(settings.ACCESS_COOKIE)
 
     count = await revoke_all_user_sessions(

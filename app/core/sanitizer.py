@@ -39,6 +39,11 @@ _QUERY_PARAMS_PATTERN = re.compile(
 
 
 def contains_html(value: str) -> bool:
+    """
+    Checks if a string contains HTML tags, script handlers, or dangerous protocols.
+
+    Useful for validating user inputs against basic XSS injection vectors.
+    """
     return bool(
         _HTML_TAG_PATTERN.search(value)
         or _EVENT_HANDLER_PATTERN.search(value)
@@ -47,16 +52,29 @@ def contains_html(value: str) -> bool:
 
 
 def validate_no_html(value: str, field_name: str = "Field") -> str:
+    """
+    Validates that a string contains no HTML tags, script handlers,
+    or dangerous protocols.
+
+    Raises:
+        ValueError: If HTML or potential scripting elements are detected
+        in the value.
+    """
     if contains_html(value):
         raise ValueError(f"{field_name} must not contain HTML tags or scripts")
     return value
 
 
 def _is_sensitive_field(field_name: str) -> bool:
+    """
+    Determines whether a field name matches any defined patterns for
+    sensitive information.
+    """
     return any(pattern.search(field_name) for pattern in _SENSITIVE_PATTERNS)
 
 
 def _mask_email(email: str) -> str:
+    """Masks local parts of email addresses to protect user privacy in logs."""
     if "@" in email:
         local, domain = email.split("@", 1)
         if len(local) <= 2:
@@ -68,6 +86,10 @@ def _mask_email(email: str) -> str:
 
 
 def _sanitize_string(text: str, max_length: int = 1000) -> str:
+    """
+    Sanitizes strings for logging - truncating, redacting emails and
+    sensitive query params.
+    """
     if not isinstance(text, str):
         text = str(text)
 
@@ -76,7 +98,6 @@ def _sanitize_string(text: str, max_length: int = 1000) -> str:
 
     text = _EMAIL_PATTERN.sub(lambda m: _mask_email(m.group()), text)
 
-    # Mask loose query-like patterns anywhere in text (key=value)
     text = re.sub(
         r"([?&]?(?:\w+))=([^&\s]+)",
         lambda m: (
@@ -91,6 +112,10 @@ def _sanitize_string(text: str, max_length: int = 1000) -> str:
 
 
 def _sanitize_dict(data: dict[str, Any], max_depth: int = 5) -> dict[str, Any]:
+    """
+    Recursively redacts dict keys containing sensitive values up to a maximum
+    depth limit.
+    """
     if max_depth <= 0:
         return {"<max_depth_reached>": "..."}
 
@@ -105,12 +130,20 @@ def _sanitize_dict(data: dict[str, Any], max_depth: int = 5) -> dict[str, Any]:
 
 
 def _sanitize_list(data: list[Any], max_depth: int = 5) -> list[Any]:
+    """
+    Recursively sanitizes array/list items up to a maximum depth and
+    element
+    limit.
+    """
     if max_depth <= 0:
         return ["<max_depth_reached>"]
     return [_sanitize_value(item, max_depth - 1) for item in data[:10]]
 
 
 def _sanitize_value(value: Any, max_depth: int = 5) -> Any:
+    """
+    Dynamically routes variables to the appropriate sanitizer function based on type.
+    """
     if value is None:
         return None
     if isinstance(value, dict):
@@ -124,6 +157,9 @@ def _sanitize_value(value: Any, max_depth: int = 5) -> Any:
 
 
 def _sanitize_sql_params(sql: str, params: Any) -> tuple[str, Any]:
+    """
+    Redacts passwords, tokens, hashes, and sensitive bindings from SQL parameter logs.
+    """
     sanitized_sql = sql
     has_sensitive_fields = any(pattern.search(sql) for pattern in _SENSITIVE_PATTERNS)
 
@@ -151,6 +187,10 @@ def _sanitize_sql_params(sql: str, params: Any) -> tuple[str, Any]:
 def _sanitize_exception_args(
     exc_args: str | tuple | dict[str, Any] | Exception,
 ) -> tuple:
+    """
+    Recursively sanitizes the positional args of exceptions to mask credentials
+    or parameters.
+    """
     sanitized_args = []
     if isinstance(exc_args, tuple):
         for arg in exc_args:
@@ -174,7 +214,7 @@ def _sanitize_exception_args(
 
 
 def sanitize_headers(headers: dict) -> dict[str, str]:
-    """Redact values of sensitive HTTP headers."""
+    """Removes sensitive header fields from a headers dictionary."""
     return {
         name: value
         for name, value in headers.items()
@@ -183,7 +223,9 @@ def sanitize_headers(headers: dict) -> dict[str, str]:
 
 
 def sanitize_query(query_string: str) -> str:
-    """Redact values of sensitive query-string parameters."""
+    """
+    Parses a query string and redacts parameter values matching sensitive key patterns.
+    """
     if not query_string:
         return ""
     try:
@@ -208,20 +250,30 @@ def sanitize_query(query_string: str) -> str:
 
 
 def sanitize_for_logging(data: Any) -> Any:
+    """
+    Sanitizes arbitrary input data structures before passing them to
+    application logger sinks.
+    """
     return _sanitize_value(data)
 
 
 def sanitize_sql_for_logging(sql: str, params: Any) -> tuple[str, Any]:
+    """
+    Sanitizes raw SQL queries and bound params list/dict to prevent leaking
+    secrets in logs.
+    """
     return _sanitize_sql_params(sql, params)
 
 
 def sanitize_exception_for_logging(exception: Any) -> Any:
+    """
+    Sanitizes traceback error messages and arguments of exceptions to safely log them.
+    """
     try:
         try:
-            # If it's an exception, try to sanitize its args
             sanitized_args = _sanitize_exception_args(exception.args)
             if sanitized_args == ():
-                raise ValueError("Empty args")  # trigger fallback
+                raise ValueError("Empty args")
         except Exception:
             sanitized_args = _sanitize_exception_args(exception)
         return sanitized_args

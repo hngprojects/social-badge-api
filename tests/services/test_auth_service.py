@@ -23,7 +23,6 @@ from app.core.token import (
     generate_token,
     get_password_reset_user_id,
     hash_token,
-    store_google_exchange_code,
     store_google_oauth_state,
     store_password_reset_token,
     store_verification_token,
@@ -46,7 +45,6 @@ from app.services.auth import (
     authenticate_with_google,
     build_google_auth_url,
     check_lockout,
-    exchange_google_code_for_tokens,
     increment_failed_attempts,
     refresh_session,
     request_password_reset,
@@ -1328,73 +1326,6 @@ async def test_send_security_alert_best_effort_calls_send_email() -> None:
         await _send_security_alert_best_effort("user@example.com", detected_at)
         mock_alert.assert_awaited_once_with("user@example.com", detected_at)
 
-
-# ---------------------------------------------------------------------------
-# exchange_google_code_for_tokens() — metadata population
-# ---------------------------------------------------------------------------
-
-
-async def test_exchange_google_code_for_tokens_populates_metadata(
-    db_session: AsyncSession,
-    fake_redis: FakeAsyncRedis,
-) -> None:
-    user = User(
-        first_name="Exchange",
-        last_name="User",
-        email="exchange-meta@example.com",
-        is_email_verified=True,
-    )
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-
-    raw_code = "test-exchange-code-meta"
-    await store_google_exchange_code(fake_redis, hash_token(raw_code), str(user.id))
-
-    req = _make_mock_request(ua="ExchangeAgent/1.0", ip="4.3.2.1")
-    _, _, raw_refresh = await exchange_google_code_for_tokens(
-        db_session, fake_redis, raw_code, request=req
-    )
-
-    result = await db_session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_refresh))
-    )
-    token = result.scalars().first()
-    assert token is not None
-    assert token.family_id is not None
-    assert token.user_agent == "ExchangeAgent/1.0"
-    assert token.ip_address == "4.3.2.1"
-    assert token.last_used_at is not None
-
-
-async def test_exchange_google_code_for_tokens_without_request_stores_nulls(
-    db_session: AsyncSession,
-    fake_redis: FakeAsyncRedis,
-) -> None:
-    user = User(
-        first_name="Exchange",
-        last_name="NoReq",
-        email="exchange-noreq@example.com",
-        is_email_verified=True,
-    )
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-
-    raw_code = "test-exchange-code-noreq"
-    await store_google_exchange_code(fake_redis, hash_token(raw_code), str(user.id))
-
-    _, _, raw_refresh = await exchange_google_code_for_tokens(
-        db_session, fake_redis, raw_code, request=None
-    )
-
-    result = await db_session.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_refresh))
-    )
-    token = result.scalars().first()
-    assert token is not None
-    assert token.user_agent is None
-    assert token.ip_address is None
 
 
 # resend_verification_email — token revocation

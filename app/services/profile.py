@@ -19,53 +19,33 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_cloudinary_public_id(url: str) -> str | None:
-    """Extract and normalize the public_id from a Cloudinary URL.
+    """
+    Parses a Cloudinary URL to extract the public ID of the hosted asset.
 
-    Cloudinary URLs follow the pattern:
-    https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{ext}
-
-    This function extracts the public_id and normalizes it by:
-    - Removing the version segment (v{digits}/)
-    - Removing the file extension
-    - Preserving folder paths within the public_id
-
-    Args:
-        url: The Cloudinary URL string.
-
-    Returns:
-        The normalized public_id string if successfully extracted, None otherwise.
+    Handles URLs with and without version segments and removes file extensions.
     """
     try:
         parsed = urlparse(url)
-        path_parts = parsed.path.split("/")
+        path_parts = [p for p in parsed.path.split("/") if p]
 
-        # Find the /upload/ segment and get everything after it
         try:
             upload_index = path_parts.index("upload")
             if upload_index + 1 < len(path_parts):
                 parts = path_parts[upload_index + 1 :]
 
-                # Remove the version segment (e.g., "v1234567890")
-                # Cloudinary URLs include /v{digits}/ after /upload/
                 if parts and parts[0].startswith("v") and parts[0][1:].isdigit():
                     parts = parts[1:]
 
-                # Ensure we still have parts after removing version
                 if not parts:
                     return None
 
-                # Remove the file extension from the last part
-                # The public_id is everything before the final extension
                 last_part = parts[-1]
                 if "." in last_part:
-                    # Remove extension but preserve the filename
                     parts[-1] = last_part.rsplit(".", 1)[0]
 
-                # Join remaining parts and URL decode
                 public_id = "/".join(parts)
                 return unquote(public_id)
         except ValueError:
-            # /upload/ not found in path
             pass
     except Exception as exc:
         logger.warning(f"Failed to extract Cloudinary public_id from URL: {exc}")
@@ -78,43 +58,31 @@ async def update_profile_photo(
     user: User,
     photo_data: bytes,
 ) -> User:
-    """Update a user's profile photo.
+    """
+    Uploads a new profile photo to Cloudinary and updates the user's database record.
 
-    Uploads the new photo to Cloudinary and updates the user's profile_photo_url.
-    If the user had a previous photo, it is deleted from Cloudinary after the
-    new upload and database update succeed.
-
-    Args:
-        session: The database session.
-        user: The user object to update.
-        photo_data: The image file bytes to upload.
-
-    Returns:
-        The updated user object.
+    Extracts the old photo's public ID to queue it for deletion,
+    uploads the new image binary to Cloudinary, commits the new URL to the database,
+    and deletes the old photo on success.
 
     Raises:
-        CloudinaryUploadError: If the upload to Cloudinary fails.
+        CloudinaryUploadError: If the upload operation fails.
     """
-    # Extract the old photo public_id, but don't delete it yet
     old_public_id = (
         _extract_cloudinary_public_id(user.profile_photo_url)
         if user.profile_photo_url
         else None
     )
 
-    # Upload the new profile photo first (this may raise CloudinaryUploadError)
     url, public_id = await upload_logo(photo_data)
     user.profile_photo_url = url
 
-    # Update the database
     session.add(user)
     await session.commit()
     await session.refresh(user)
 
     logger.info(f"Updated profile photo for user {user.id}: {public_id}")
 
-    # Best-effort cleanup of old asset after successful update
-    # If deletion fails, the old asset remains but the user has already moved on
     if old_public_id:
         try:
             await delete_asset(old_public_id)
@@ -133,19 +101,12 @@ async def remove_profile_photo(
     session: AsyncSession,
     user: User,
 ) -> User:
-    """Remove the authenticated user's profile photo.
+    """
+    Resets the user's profile photo URL to None in the database
+    and deletes the asset from Cloudinary.
 
-    Clears profile_photo_url in the database and deletes the asset from
-    Cloudinary. If the user has no photo, this is a no-op. Cloudinary
-    deletion failure is logged but does not prevent the DB field from being
-    cleared.
-
-    Args:
-        session: The database session.
-        user: The user object whose photo should be removed.
-
-    Returns:
-        The updated user object with profile_photo_url set to None.
+    Extracts the public ID from the current photo URL, updates the database,
+    commits the session, and calls Cloudinary to delete the asset.
     """
     if user.profile_photo_url:
         public_id = _extract_cloudinary_public_id(user.profile_photo_url)
@@ -175,20 +136,11 @@ async def update_profile(
     email: str | None = None,
     role: str | None = None,
 ) -> User:
-    """Update a user's profile information.
+    """
+    Updates the user's textual profile fields (names, email, role) in the database.
 
-    Only updates fields that are explicitly provided (not None).
-
-    Args:
-        session: The database session.
-        user: The user object to update.
-        first_name: New first name (optional).
-        last_name: New last name (optional).
-        email: New email address (optional).
-        role: New role/title (optional).
-
-    Returns:
-        The updated user object.
+    Applies any non-None updates to the user instance, commits the transaction,
+    and refreshes the user.
     """
     if first_name is not None:
         user.first_name = first_name
@@ -213,26 +165,19 @@ async def delete_profile(
     access_token: str | None = None,
     refresh_token: str | None = None,
 ) -> None:
-    """Delete a user's profile, associated Cloudinary assets, and invalidate sessions.
-
-    Fetches the user and their badges to collect Cloudinary asset IDs,
-    then deletes the user record from the database (the authoritative action).
-    Cloudinary asset cleanup and session invalidation run as best-effort
-    post-commit work so a DB failure never leaves orphaned side effects.
-
-    Args:
-        session: The database session.
-        redis: Redis client for token blacklisting.
-        user_id: The ID of the user to delete.
-        access_token: The caller's raw access token cookie value.
-        refresh_token: The caller's raw refresh token cookie value.
     """
-    # Fetch the user to get the profile photo URL
+    Deletes a user's profile, all associated database records,
+    and their Cloudinary assets.
+
+    Collects public IDs for the user's profile photo, badge logos, and badge thumbnails.
+    Deletes the User record from the database (cascading deletes where set up),
+    commits, deletes all collected Cloudinary assets asynchronously,
+    and invalidates the user's session tokens.
+    """
     stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
     user = result.scalars().first()
 
-    # Collect all Cloudinary public IDs to delete
     public_ids_to_delete: list[str] = []
 
     if user and user.profile_photo_url:
@@ -244,7 +189,6 @@ async def delete_profile(
                 "Could not extract public_id from URL: %s", user.profile_photo_url
             )
 
-    # Fetch all badges belonging to this user and collect their Cloudinary assets
     badge_stmt = select(Badge).where(Badge.organiser_id == user_id)
     badge_result = await session.execute(badge_stmt)
     badges = badge_result.scalars().all()
@@ -257,15 +201,12 @@ async def delete_profile(
             if thumb_id:
                 public_ids_to_delete.append(thumb_id)
 
-    # Delete the user record from the database first (cascades to badges, tokens, etc.)
-    # This is the authoritative action; external cleanup is best-effort post-commit.
     delete_stmt = delete(User).where(User.id == user_id)
     await session.execute(delete_stmt)
     await session.commit()
 
     logger.info("Deleted user profile: %s", user_id)
 
-    # Best-effort post-commit: delete Cloudinary assets concurrently
     if public_ids_to_delete:
         results = await asyncio.gather(
             *(delete_asset(pid) for pid in public_ids_to_delete),
@@ -282,7 +223,6 @@ async def delete_profile(
             else:
                 logger.info("Deleted Cloudinary asset %s for user %s", pid, user_id)
 
-    # Best-effort post-commit: invalidate the current session (blacklist access token)
     try:
         await logout_session(session, redis, refresh_token, access_token)
     except Exception:
@@ -297,27 +237,15 @@ async def change_password(
     access_token: str | None,
     refresh_token: str | None,
 ) -> None:
-    """Change the authenticated user's password.
+    """
+    Updates the authenticated user's password after verifying their current password.
 
-    Verifies the current password before applying the change, then
-    revokes the caller's current session. The user will need to log in again
-    with the new password.
-
-    OAuth-only accounts (password_hash is None) receive the same
-    InvalidCredentialsError as a wrong password to avoid leaking
-    account auth method to the caller.
-
-    Args:
-        session: The database session.
-        redis: Redis client for token blacklisting.
-        user: The currently authenticated user.
-        payload: Validated request containing current and new passwords.
-        access_token: The caller's raw access token cookie value, used
-            to blacklist it after the password is changed.
+    Validates the current password against the stored hash, hashes the new password,
+    persists the change, commits, and logs out the current session
+    to force re-authentication.
 
     Raises:
-        InvalidCredentialsError: If current_password does not match the
-            stored hash, or if the account has no password set.
+        InvalidCredentialsError: If the current password verification fails.
     """
     if not user.password_hash or not await asyncio.to_thread(
         verify_password, payload.current_password, user.password_hash

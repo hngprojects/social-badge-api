@@ -14,6 +14,13 @@ if TYPE_CHECKING:
 
 
 class Badge(Base):
+    """
+    Database representation of an event or organization badge.
+
+    Stores template configurations, custom layouts (canvas data), accessibility options,
+    access control (such as codes or privacy types), and engagement metrics.
+    """
+
     __tablename__ = "badges"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -56,16 +63,13 @@ class Badge(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Relationship back to the User
     organiser: Mapped[User] = relationship("User", back_populates="badges")
 
-    # Relationship to PlatformTemplate
     platform_template: Mapped[PlatformTemplate] = relationship(
         "PlatformTemplate",
         back_populates="badges",
     )
 
-    # Relationships to child tables
     hashtags: Mapped[list[BadgeHashtag]] = relationship(
         "BadgeHashtag",
         back_populates="badge",
@@ -74,6 +78,13 @@ class Badge(Base):
 
 
 class BadgeHashtag(Base):
+    """
+    Database representation of a social media hashtag associated with a specific badge.
+
+    Enables categorization and aggregation of badges to support sharing campaign
+    analytics and discovery.
+    """
+
     __tablename__ = "badge_hashtags"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -86,5 +97,4 @@ class BadgeHashtag(Base):
     )
     hashtag: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
 
-    # Relationship back to the Badge
     badge: Mapped[Badge] = relationship("Badge", back_populates="hashtags")

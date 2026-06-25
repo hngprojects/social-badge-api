@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 
 
 class User(Base):
+    """
+    Database representation of an authenticated user.
+
+    Manages user profile fields, authentication states,
+    and relationships to associated entities such as authentication providers,
+    active sessions, badges, roles, and notifications.
+    """
+
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -48,7 +56,6 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
-    # Relationship to Badge
     badges: Mapped[list[Badge]] = relationship(
         "Badge",
         back_populates="organiser",

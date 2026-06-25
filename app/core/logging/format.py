@@ -3,10 +3,11 @@ from typing import Any
 
 
 class LogFormat:
-    """Produce consistent Loguru-compatible format strings for console and file sinks.
+    """
+    Produce consistent Loguru-compatible format strings for console and file sinks.
 
-    Keeps colour markup in a single place so changing the palette only
-    requires editing this class.
+    Keeps colour markup in a single place so changing the palette
+    only requires editing this class.
     """
 
     _LEVEL_COLOURS: dict[str, str] = {
@@ -20,22 +21,23 @@ class LogFormat:
     }
 
     def __init__(self, record: Any) -> None:
+        """
+        Initializes the LogFormat by parsing and structuring log record attributes.
+        """
         self._record = record
         self.time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         self.level = record["level"].name
         self._colour = self._LEVEL_COLOURS.get(self.level, "white")
 
-        # Loguru exposes function name as "<module>" for top-level code;
-        # angle brackets must be escaped so Loguru doesn't treat them as markup.
         func = record["function"]
-        self.location = (
-            f"{record['file'].name}:"
-            f"{'<module>' if func == '<module>' else func}:"
-            f"{record['line']}"
-        )
+        variable_location = "<module>" if func == "<module>" else func
+        self.location = f"{record['file'].name}:{variable_location}:{record['line']}"
 
     def console(self) -> str:
-        """Human-readable coloured format for stdout."""
+        """
+        Produces a colorized, human-readable format string for stdout/console
+        destinations.
+        """
         colour = self._colour
         return (
             f"<dim><bold>{self.time_str}</bold></dim> | "
@@ -46,7 +48,10 @@ class LogFormat:
         )
 
     def file(self) -> str:
-        """Structured format for file sinks — appends extra context fields."""
+        """
+        Produces a structured, serialized format string with extra ctx fields
+        for file sinks.
+        """
         extras = {
             key: value
             for key, value in self._record["extra"].items()
@@ -61,7 +66,6 @@ class LogFormat:
             else:
                 safe_value = str(value)
 
-            # Escape braces so Loguru doesn't treat them as format placeholders
             safe_value = safe_value.replace("{", "{{").replace("}", "}}")
             context_parts.append(f"{key}={safe_value}")
 

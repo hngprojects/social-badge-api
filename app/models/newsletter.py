@@ -8,6 +8,13 @@ from app.models.base import Base
 
 
 class NewsletterSubscriber(Base):
+    """
+    Database representation of a newsletter subscriber.
+
+    Manages email subscription state, subscription/unsubscription timestamps,
+    and unique tokens for secure, single-click unsubscription mechanisms.
+    """
+
     __tablename__ = "newsletter_subscribers"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)

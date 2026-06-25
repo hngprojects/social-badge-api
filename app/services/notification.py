@@ -23,6 +23,12 @@ async def get_notification_preferences(
     session: AsyncSession,
     user_id: UUID,
 ) -> NotificationPreferencesResponse:
+    """
+    Retrieves the notification preferences for a specific user.
+
+    Queries the UserNotificationPreference table. If no preferences record exists,
+    returns a schema populated with default toggle values.
+    """
     result = await session.execute(
         select(UserNotificationPreference).where(
             UserNotificationPreference.user_id == user_id
@@ -48,15 +54,13 @@ async def update_notification_preferences(
     user_id: UUID,
     updates: dict[str, bool],
 ) -> NotificationPreferencesResponse:
-    """Persist notification preference changes for an organiser.
+    """
+    Updates or inserts notification preferences for a user.
 
-    Uses a PostgreSQL upsert so:
-    - A first-time write creates the row with defaults for any field not
-        included in `updates`.
-    - A subsequent write only touches the columns present in `updates`;
-        everything else is left at its stored value.
-    - Concurrent writes from two devices are handled atomically by the
-        database — last write wins with no risk of data corruption.
+    Performs an upsert (INSERT ... ON CONFLICT DO UPDATE) operation
+    using PostgreSQL dialect extensions to guarantee that the record is either updated
+    or initialized with defaults.
+    Commits the transaction and returns the refreshed preferences.
     """
     insert_values: dict[str, object] = {
         "user_id": user_id,
@@ -74,7 +78,6 @@ async def update_notification_preferences(
         .values(**insert_values)
         .on_conflict_do_update(
             index_elements=["user_id"],
-            # Only overwrite the columns the client explicitly sent.
             set_=conflict_updates,
         )
     )
@@ -106,10 +109,15 @@ async def create_notification(
     body: str,
     extra_data: dict | None = None,
 ) -> Notification | None:
-    """Create a notification if the user's toggle for this type is on.
+    """
+    Creates a new in-app notification if the user has enabled alerts
+    for that notification type.
 
-    Returns the created notification, or None if the toggle is off.
-    Caller is responsible for commit — this function only flushes.
+    Retrieves the user's preferences, checks the toggle
+    corresponding to the notification type, inserts the Notification record if active,
+    and flushes the database session to assign an ID.
+    Returns the created Notification instance,
+    or None if the notification type is disabled.
     """
     result = await session.execute(
         select(UserNotificationPreference).where(
@@ -140,7 +148,12 @@ async def list_notifications(
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[Notification], int]:
-    """Return paginated notifications for a user, newest first."""
+    """
+    Retrieves a paginated list of all notifications for a user, sorted newest first.
+
+    Queries both the total count of notifications for the user and the slice
+    matching the limit and page offset.
+    """
     where_clause = Notification.user_id == user_id
 
     count_result = await session.execute(
@@ -160,7 +173,7 @@ async def list_notifications(
 
 
 async def get_unread_count(session: AsyncSession, user_id: UUID) -> int:
-    """Return the count of unread notifications for a user."""
+    """Returns the total number of unread notifications for a user."""
     result = await session.execute(
         select(func.count(Notification.id)).where(
             Notification.user_id == user_id,
@@ -175,7 +188,12 @@ async def mark_notification_read(
     user_id: UUID,
     notification_id: UUID,
 ) -> bool:
-    """Mark one notification as read. Returns False if not found or not owned."""
+    """
+    Marks a single notification as read if it belongs to the specified user.
+
+    Executes an update query, commits the changes, and returns a boolean
+    indicating whether a matching notification row was updated.
+    """
     result = await session.execute(
         sa_update(Notification)
         .where(
@@ -192,7 +210,12 @@ async def mark_all_notifications_read(
     session: AsyncSession,
     user_id: UUID,
 ) -> int:
-    """Mark every unread notification for the user as read. Returns the count."""
+    """
+    Marks all unread notifications for a user as read.
+
+    Executes a bulk update query, commits the session,
+    and returns the count of updated rows.
+    """
     result = await session.execute(
         sa_update(Notification)
         .where(

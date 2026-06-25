@@ -30,8 +30,6 @@ from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
 
-# Valid gallery categories — used for validation so we can return a clean 400
-# rather than an empty list when the client sends a typo.
 VALID_CATEGORIES = frozenset(
     {
         "festivals",
@@ -50,6 +48,11 @@ VALID_CATEGORIES = frozenset(
 async def _increment_template_badge_count(
     session: AsyncSession, platform_template_id: UUID
 ) -> None:
+    """
+    Increments the total count of badges generated using a specific platform template.
+
+    Performs an in-place atomic update query in the database.
+    """
     await session.execute(
         sa_update(PlatformTemplate)
         .where(PlatformTemplate.id == platform_template_id)
@@ -62,6 +65,18 @@ async def create_badge(
     organiser_id: UUID,
     platform_template_id: UUID,
 ) -> Badge:
+    """
+    Creates and persists a new badge instance based on a platform template.
+
+    Verifies that the platform template exists and is active.
+    Clones properties such as title and canvas data from the platform template,
+    increments the template's badge count, commits the database transaction,
+    and returns the created badge.
+
+    Raises:
+        PlatformTemplateNotFoundError: If the platform template does not exist.
+        PlatformTemplateNotActiveError: If the platform template is inactive.
+    """
     result = await session.execute(
         select(PlatformTemplate).where(
             PlatformTemplate.id == platform_template_id,
@@ -100,6 +115,18 @@ async def publish_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
+    """
+    Publishes a badge to make it publicly viewable.
+
+    Marks the badge as published, sets its publication timestamp,
+    and assigns a unique share slug if one hasn't been generated yet.
+    Commits the transaction and refreshes the badge.
+
+    Raises:
+        BadgeNotFoundError: If the badge is not found.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
+        BadgeAlreadyPublishedError: If the badge has already been published.
+    """
     result = await session.execute(
         select(Badge).where(
             Badge.id == id,
@@ -143,6 +170,16 @@ async def unpublish_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
+    """
+    Unpublishes an active badge, removing its public visibility.
+
+    Resets the publication status and timestamp of the badge,
+    commits the changes to the database, and refreshes the object.
+
+    Raises:
+        BadgeNotFoundError: If the badge is not found or has been soft-deleted.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
+    """
     result = await session.execute(select(Badge).where(Badge.id == id))
     template = result.scalars().first()
     if template is None or template.deleted_at is not None:
@@ -165,12 +202,18 @@ async def upload_badge_logo(
     organiser_id: UUID,
     image_data: bytes,
 ) -> str:
-    """Upload a logo for a template instance and return the Cloudinary URL.
+    """
+    Uploads a logo for a badge to Cloudinary and persists the URL in the database.
+
+    Retrieves the badge, uploads the logo binary to Cloudinary,
+    updates logo metadata (URL and public ID), and commits.
+    If the DB commit fails, rolls back the transaction
+    and attempts to delete the newly uploaded asset from Cloudinary.
+    Deletes any pre-existing badge logo from Cloudinary on successful commit.
 
     Raises:
-        BadgeNotFoundError: if the instance does not exist.
-        NotBadgeOwnerError: if the instance belongs to another organiser.
-        CloudinaryUploadError: if the Cloudinary upload fails.
+        BadgeNotFoundError: If the badge is not found.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
     """
     result = await session.execute(
         select(Badge).where(
@@ -188,7 +231,6 @@ async def upload_badge_logo(
 
     old_public_id = instance.logo_public_id
 
-    # Upload first so the DB always points at a live asset.
     logo_url, public_id = await upload_logo(image_data)
 
     instance.logo_url = logo_url
@@ -197,7 +239,6 @@ async def upload_badge_logo(
         await session.commit()
     except Exception:
         await session.rollback()
-        # DB commit failed — best-effort cleanup of the just-uploaded asset.
         try:
             await delete_logo(public_id)
         except Exception:
@@ -208,8 +249,6 @@ async def upload_badge_logo(
         raise
     await session.refresh(instance)
 
-    # Only delete the old asset after the DB is consistent.
-    # A failure here is non-fatal — the new logo is already persisted.
     if old_public_id:
         try:
             await delete_logo(old_public_id)
@@ -231,6 +270,14 @@ async def get_public_badge_by_slug(
     session: AsyncSession,
     slug: str,
 ) -> Badge:
+    """
+    Fetches a published badge along with its hashtags using its share slug.
+
+    Performs a public lookup of non-deleted, published badges.
+
+    Raises:
+        PublicBadgeNotFoundError: If the badge cannot be resolved.
+    """
     result = await session.execute(
         select(Badge)
         .options(selectinload(Badge.hashtags))
@@ -255,10 +302,14 @@ _PUBLIC_WHERE = (
 
 
 async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
-    """Atomically increment share_count for a published badge.
+    """
+    Atomically increments the share count of a published badge by one.
 
-    Raises PublicBadgeNotFoundError when the slug does not resolve to a
-    published, non-deleted badge so the router can return 404.
+    Performs an update query on the database using the badge's share slug.
+
+    Raises:
+        PublicBadgeNotFoundError: If the badge is not found, not published,
+        or soft-deleted.
     """
     result = cast(
         CursorResult[Any],
@@ -274,13 +325,18 @@ async def increment_badge_share_count(session: AsyncSession, slug: str) -> None:
 
 
 async def increment_badge_creation_count(session: AsyncSession, slug: str) -> None:
-    """Atomically increment creation_count for a published badge.
+    """
+    Atomically increments the creation count of a published badge
+    and creates a notification.
 
-    Also creates a 'badge_creation' notification for the badge owner if
-    their toggle is on.
+    Increments the creation_count in the database,
+    retrieves the badge's metadata,
+    and generates a BADGE_CREATION notification for the badge's organiser.
+    Commits the transaction.
 
-    Raises PublicBadgeNotFoundError when the slug does not resolve to a
-    published, non-deleted badge so the router can return 404.
+    Raises:
+        PublicBadgeNotFoundError: If the badge is not found, not published,
+        or soft-deleted.
     """
     result = await session.execute(
         sa_update(Badge)
@@ -313,6 +369,16 @@ async def list_platform_templates(
     page: int = 1,
     limit: int = 10,
 ) -> tuple[list[PlatformTemplate], int]:
+    """
+    Retrieves a paginated list of active platform templates,
+    optionally filtered by category.
+
+    Validates the category if provided, counts the total matching templates,
+    and returns a tuple containing the matching templates list and the total count.
+
+    Raises:
+        ValueError: If the category is not recognized.
+    """
     if category is not None:
         normalised = category.strip().lower()
         if normalised not in VALID_CATEGORIES:
@@ -352,8 +418,7 @@ async def list_platform_templates(
     templates = list(result.scalars().all())
 
     logger.debug(
-        "list_platform_templates: category=%s page=%d limit=%d "
-        "returned %d of %d total results",
+        "list_platform_templates: category=%s page=%d limit=%d returned %d of %d total results",  # noqa: E501
         category,
         page,
         limit,
@@ -367,6 +432,12 @@ async def get_platform_template(
     session: AsyncSession,
     id: UUID,
 ) -> PlatformTemplate:
+    """
+    Fetches a single active platform template by its identifier.
+
+    Raises:
+        PlatformTemplateNotFoundError: If the template is not found or is inactive.
+    """
     result = await session.execute(
         select(PlatformTemplate).where(
             PlatformTemplate.id == id,
@@ -385,6 +456,19 @@ async def duplicate_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
+    """
+    Duplicates an existing badge and its hashtags for the same organiser.
+
+    Fetches the original badge, creates a new Badge record containing the cloned fields
+    with copy suffixes and cleared publication/slug/logo fields,
+    duplicates associated hashtags, increments the template usage count,
+    and commits the transaction.
+
+    Raises:
+        BadgeNotFoundError: If the original badge is not found or has been soft-deleted.
+        NotBadgeOwnerError: If the original badge does not belong
+        to the requesting organiser.
+    """
     result = await session.execute(
         select(Badge)
         .options(selectinload(Badge.hashtags))
@@ -442,6 +526,13 @@ async def list_badges(
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[Badge], int]:
+    """
+    Retrieves a paginated list of non-deleted badges owned by a specific organiser.
+
+    Orders the badges by last updated and creation times,
+    and returns a tuple containing the list of badges and the total number of badges
+    matching the query.
+    """
     base_conditions = (
         Badge.organiser_id == organiser_id,
         Badge.deleted_at.is_(None),
@@ -481,6 +572,16 @@ async def delete_badge(
     organiser_id: UUID,
     id: UUID,
 ) -> None:
+    """
+    Soft-deletes a badge and deletes its logo from Cloudinary.
+
+    Sets the deleted_at timestamp on the badge record, unpublishes it, and commits.
+    Once the transaction is committed, attempts to delete the logo from Cloudinary.
+
+    Raises:
+        BadgeNotFoundError: If the badge is not found or has already been soft-deleted.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
+    """
     result = await session.execute(
         select(Badge).where(
             Badge.id == id,
@@ -530,6 +631,15 @@ async def get_badge_by_id(
     organiser_id: UUID,
     id: UUID,
 ) -> Badge:
+    """
+    Retrieves a non-deleted badge and its hashtags by its unique identifier.
+
+    Verifies ownership before returning the database record.
+
+    Raises:
+        BadgeNotFoundError: If the badge is not found or has been soft-deleted.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
+    """
     result = await session.execute(
         select(Badge)
         .options(selectinload(Badge.hashtags))
@@ -555,6 +665,18 @@ async def edit_badge(
     new_hashtags: list[str] | None,
     update_hashtags: bool,
 ) -> Badge:
+    """
+    Modifies an existing badge's details, access controls, and hashtags.
+
+    Applies attribute updates, validates private access codes
+    (between 4 and 10 characters), replaces existing hashtags if specified,
+    commits the transaction, and returns the refreshed badge.
+
+    Raises:
+        BadgeNotFoundError: If the badge is not found or is soft-deleted.
+        NotBadgeOwnerError: If the badge does not belong to the requesting organiser.
+        ValueError: If private access controls are invalid or access_type is invalid.
+    """
     result = await session.execute(
         select(Badge)
         .options(selectinload(Badge.hashtags))
@@ -595,8 +717,6 @@ async def edit_badge(
 
     await session.commit()
 
-    # Re-query after commit to return a fully consistent object with
-    # the updated hashtag relationship loaded.
     refreshed = await session.execute(
         select(Badge).options(selectinload(Badge.hashtags)).where(Badge.id == id)
     )
@@ -607,19 +727,12 @@ async def get_badge_analytics(
     session: AsyncSession,
     organiser_id: UUID,
 ) -> tuple[int, int, int, int, list[tuple[UUID, int]]]:
-    """Aggregate the authenticated organiser's badge metrics.
+    """
+    Calculates aggregates and platform template usage analytics
+    for an organiser's badges.
 
-    Performs two database round-trips:
-      1. A single SELECT that computes four scalar aggregates in one pass.
-      2. A grouped SELECT for the per-template breakdown.
-
-    Soft-deleted badges (``deleted_at IS NOT NULL``) are excluded from every
-    aggregate to stay consistent with ``list_badges``.
-
-    Returns:
-        A tuple of (total, active, total_shares, total_creations, usage_rows)
-        where ``usage_rows`` is a list of ``(platform_template_id, count)``
-        ordered by count descending.
+    Queries the database to calculate total badges, active (published) badges,
+    overall shares, overall creations, and templates usage counts sorted by frequency.
     """
     base_conditions = (
         Badge.organiser_id == organiser_id,

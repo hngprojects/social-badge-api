@@ -12,6 +12,13 @@ if TYPE_CHECKING:
 
 
 class Role(Base):
+    """
+    Database representation of a user role.
+
+    Defines specific authorization permissions or access levels (e.g., 'admin', 'user')
+    that can be assigned to users in the system.
+    """
+
     __tablename__ = "roles"
     __table_args__ = (UniqueConstraint("name", name="uq_roles_name"),)
 
@@ -36,6 +43,13 @@ class Role(Base):
 
 
 class UserRole(Base):
+    """
+    Association model representing the many-to-many relationship between
+    users and roles.
+
+    Links a specific user to a specific role, tracking assignment timestamps.
+    """
+
     __tablename__ = "user_roles"
     __table_args__ = (
         UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_id_role_id"),

@@ -1,5 +1,3 @@
-"""Service layer for platform template CRUD operations."""
-
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +15,12 @@ async def create_platform_template(
     thumbnail_url: str | None,
     is_active: bool,
 ) -> PlatformTemplate:
-    """Create and persist a new platform template."""
+    """
+    Creates a new platform badge template inside a database transaction.
+
+    Inserts a PlatformTemplate record, commits the session, and refreshes the instance
+    to populate database-generated fields (like IDs and timestamps).
+    """
     template = PlatformTemplate(
         title=title,
         category=category,
@@ -37,8 +40,12 @@ async def list_platform_templates(
     limit: int = 100,
     offset: int = 0,
 ) -> list[PlatformTemplate]:
-    """Return platform templates, optionally filtered by category
-    with limit/offset pagination."""
+    """
+    Retrieves a paginated list of platform templates from the database.
+
+    The templates are sorted chronologically by creation time.
+    Supports optional filtering by template category.
+    """
     stmt = select(PlatformTemplate)
     if category is not None:
         stmt = stmt.where(PlatformTemplate.category == category)
@@ -50,7 +57,12 @@ async def list_platform_templates(
 async def get_platform_template(
     session: AsyncSession, template_id: UUID
 ) -> PlatformTemplate | None:
-    """Fetch a platform template by ID."""
+    """
+    Retrieves a single platform template by its unique identifier.
+
+    Queries the database directly using the session's get method,
+    returning None if the template is not found.
+    """
     return await session.get(PlatformTemplate, template_id)
 
 
@@ -63,7 +75,12 @@ async def update_platform_template(
     thumbnail_url: str | None,
     is_active: bool | None,
 ) -> PlatformTemplate:
-    """Update fields on a platform template and persist changes."""
+    """
+    Updates the fields of an existing platform template.
+
+    Modifies attributes on the template object if the provided argument is not None,
+    commits the session transaction, and refreshes the database instance.
+    """
     if title is not None:
         template.title = title
     if category is not None:
@@ -82,6 +99,10 @@ async def update_platform_template(
 async def delete_platform_template(
     session: AsyncSession, template: PlatformTemplate
 ) -> None:
-    """Delete a platform template."""
+    """
+    Removes a platform template from the database.
+
+    Deletes the template instance using the session and commits the transaction.
+    """
     await session.delete(template)
     await session.commit()

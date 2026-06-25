@@ -16,6 +16,16 @@ from app.routers.v1 import api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """
+    Manages application startup and shutdown lifecycle events.
+
+    Initializes structured application logging on startup and cleanly terminates
+    the Redis connection pool on shutdown to prevent socket leaks.
+    Executed by the ASGI server worker process with minimal overhead,
+    as establishing logging and closing Redis connections are one-off operations
+    occurring outside request-response loops. This lifecycle context is public,
+    requires no authentication, and is not rate-limited.
+    """
     setup_logging(
         log_level=settings.LOG_LEVEL,
         log_file=settings.LOG_FILE,
@@ -58,4 +68,13 @@ register_exception_handlers(app)
 @app.get("/")
 @limiter.limit("15/minute")
 def root(request: Request) -> dict[str, str]:
+    """
+    Serves a basic system health-check response confirming that the service is running.
+
+    This public endpoint requires no authentication and returns a simple JSON payload
+    containing the project name. The handler is extremely lightweight,
+    returning static information without querying the database or Redis
+    (excluding rate limiter checks).
+    It is rate-limited to 15 requests per minute per client IP.
+    """
     return {"message": f"{settings.PROJECT_NAME} is running"}

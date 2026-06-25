@@ -1756,8 +1756,7 @@ async def deletable_template(
         title="To Be Deleted",
         canvas_data={"layout_id": "v1"},
         logo_url=(
-            "https://res.cloudinary.com/mycloud/image/upload/"
-            "template-logos/logo-del.png"
+            "https://res.cloudinary.com/mycloud/image/upload/template-logos/logo-del.png"
         ),
         logo_public_id="template-logos/logo-del",
     )

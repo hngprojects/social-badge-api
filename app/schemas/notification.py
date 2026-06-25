@@ -8,6 +8,11 @@ from app.models.notifications import NotificationType
 
 
 class NotificationPreferencesResponse(BaseModel):
+    """
+    Data transfer object representing a user's notification settings and preferences,
+    defining toggle states for email alerts and digests.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     email_template_published: bool
@@ -19,6 +24,11 @@ class NotificationPreferencesResponse(BaseModel):
 
 
 class UpdateNotificationPreferencesRequest(BaseModel):
+    """
+    Data transfer object representing a request to update user notification preferences,
+    allowing partial updates to settings while ignoring extra fields.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
     email_template_published: bool | None = None
@@ -29,6 +39,11 @@ class UpdateNotificationPreferencesRequest(BaseModel):
 
 
 class NotificationResponse(BaseModel):
+    """
+    Data transfer object representing details of a single user notification,
+    including the type, status, subject text, and optional payload.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -41,6 +56,11 @@ class NotificationResponse(BaseModel):
 
 
 class NotificationListResponse(BaseModel):
+    """
+    Data transfer object representing a paginated list of notifications,
+    containing the matching notifications and pagination navigation links.
+    """
+
     notifications: list[NotificationResponse]
     total: int
     page: int
@@ -50,8 +70,18 @@ class NotificationListResponse(BaseModel):
 
 
 class UnreadCountResponse(BaseModel):
+    """
+    Data transfer object representing the total count of unread notifications
+    for the authenticated user.
+    """
+
     unread_count: int = Field(..., description="Number of unread notifications.")
 
 
 class MarkAllReadResponse(BaseModel):
+    """
+    Data transfer object indicating the result of marking all notifications as read,
+    returning the count of updated records.
+    """
+
     marked: int = Field(..., description="Number of notifications marked as read.")
