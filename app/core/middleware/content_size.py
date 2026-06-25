@@ -4,11 +4,26 @@ from starlette.types import Message
 
 
 class ContentSizeLimitMiddleware:
+    """Enforces a maximum body size limit on incoming HTTP request payloads.
+
+    Intercepts HTTP scope calls at the ASGI layer and dynamically tracks bytes received
+    to guard against request body overflow attacks and memory degradation.
+    """
+
     def __init__(self, app, max_body_bytes: int = 1 * 1024 * 1024):
+        """Initializes the ASGI middleware with application scope reference and body
+        limits."""
         self.app = app
         self.max_body_bytes = max_body_bytes
 
     async def __call__(self, scope, receive, send):
+        """Processes the ASGI request flow, validating and enforcing the payload size
+        constraint.
+
+        Bypasses checks for non-HTTP scope types. Validates headers first, and if not
+        present, instruments the receive generator dynamically to compute payload bytes
+        received on the fly.
+        """
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -16,8 +31,6 @@ class ContentSizeLimitMiddleware:
         request = Request(scope, receive=receive)
 
         content_length = request.headers.get("content-length")
-
-        # ---- Header check (fast fail) ----
         if content_length is not None:
             try:
                 if int(content_length) > self.max_body_bytes:
@@ -41,13 +54,17 @@ class ContentSizeLimitMiddleware:
                 await response(scope, receive, send)
                 return
 
-        # ---- Streaming protection ----
         received_size = 0
 
         class _PayloadTooLarge(Exception):
+            """Internal signal exception raised when received request payload size limit
+            is exceeded."""
+
             pass
 
         async def limited_receive() -> Message:
+            """ASGI receive wrapper that monitors incoming body chunk sizes and enforces
+            size restrictions."""
             nonlocal received_size
 
             message = await receive()

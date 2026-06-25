@@ -2,7 +2,6 @@ import contextvars
 import uuid
 from typing import Any
 
-# Module-level ContextVar — one per async task, safe under concurrent requests.
 request_context: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
     "request_context", default=None
 )
@@ -20,15 +19,27 @@ class RequestContextLogger:
     """
 
     def __init__(self, request_id: str | None = None, **context: Any) -> None:
+        """Initializes the context logger with request ID and arbitrary key-value
+        context.
+
+        Generates a short random fallback UUID if request_id is not specified.
+        """
+        # Using uuid4 here instead of uuid7 as we only need the first 8 characters.
+        # Truncating a uuid7 would leave only the timestamp portion,
+        # eliminating the randomness.
         self.request_id = request_id or str(uuid.uuid4())[:8]
         self.context: dict[str, Any] = {"request_id": self.request_id, **context}
         self._token: contextvars.Token[dict[str, Any] | None] | None = None
 
-    async def __aenter__(self) -> "RequestContextLogger":
+    async def __aenter__(self) -> RequestContextLogger:
+        """Enters the asynchronous context, binding the log context to
+        request_context."""
         self._token = request_context.set(self.context)
         return self
 
     async def __aexit__(self, *_: object) -> None:
+        """Exits the asynchronous context, resetting the request log context to its
+        prior state."""
         if self._token is not None:
             request_context.reset(self._token)
             self._token = None

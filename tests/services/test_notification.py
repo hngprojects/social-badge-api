@@ -52,8 +52,8 @@ async def test_update_preferences_new(
     db_session: AsyncSession,
     service_user: User,
 ) -> None:
-    """Updating preferences for the first time persists them
-    and defaults missing ones to True."""
+    """Updating preferences for the first time persists them and defaults missing ones
+    to True."""
     updates = {"email_template_published": False}
 
     # Verify updates returned and stored
@@ -69,7 +69,6 @@ async def test_update_preferences_existing_partial(
 ) -> None:
     """Updating an existing preference partially updates only the specified fields,
     leaving others unchanged."""
-
     # Create initial preferences (both False)
     prefs1 = await update_notification_preferences(
         db_session,
@@ -104,8 +103,8 @@ async def test_update_preferences_existing_partial(
 async def test_concurrent_updates_last_write_wins(
     service_user: User,
 ) -> None:
-    """Concurrent updates from two different sessions succeed without corruption,
-    and last write wins."""
+    """Concurrent updates from two different sessions succeed without corruption, and
+    last write wins."""
     engine = create_db_engine()
     session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
@@ -162,7 +161,6 @@ async def test_update_preferences_bumps_updated_at(
     service_user: User,
 ) -> None:
     """Updating existing preferences bumps the updated_at timestamp."""
-
     # 1. Create the preference
     prefs1 = await update_notification_preferences(
         db_session, service_user.id, {"email_new_signin": False}

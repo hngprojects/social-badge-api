@@ -12,6 +12,9 @@ from pydantic import (
 
 
 class CreateBadgeRequest(BaseModel):
+    """Data transfer object representing a request to create a new badge template
+    instance based on a platform template."""
+
     platform_template_id: UUID = Field(
         ...,
         description="The id of the platform template the organiser is starting from.",
@@ -20,6 +23,9 @@ class CreateBadgeRequest(BaseModel):
 
 
 class CreateBadgeResponse(BaseModel):
+    """Data transfer object representing a successful badge creation response, mapping
+    from internal database models."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(
@@ -41,11 +47,20 @@ class CreateBadgeResponse(BaseModel):
 
 
 class PublishedBadgeResponse(BaseModel):
+    """Data transfer object representing a published badge template's access and slugs,
+    mapping from database model attributes."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(..., description="The template instance id.")
     title: str = Field(..., description="The template title.")
     is_published: bool = Field(..., description="Whether the template is published.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
+    )
     published_at: datetime | None = Field(
         ..., description="When the template was published (null if never published)."
     )
@@ -58,6 +73,9 @@ class PublishedBadgeResponse(BaseModel):
 
 
 class LogoUploadResponse(BaseModel):
+    """Data transfer object representing the uploaded logo result, returning the public
+    hosting URL."""
+
     logo_url: str = Field(
         ...,
         description="The Cloudinary URL of the uploaded logo.",
@@ -68,6 +86,9 @@ class LogoUploadResponse(BaseModel):
 
 
 class PublicBadgePageResponse(BaseModel):
+    """Data transfer object representing a badge's public page details, containing
+    canvas layout, logo, and hashtags."""
+
     model_config = ConfigDict(from_attributes=True)
 
     title: str = Field(..., description="The event/template title.")
@@ -93,6 +114,9 @@ class PublicBadgePageResponse(BaseModel):
 
 
 class DuplicateBadgeResponse(BaseModel):
+    """Data transfer object representing a response for a duplicated badge, defining it
+    as a new unpublished draft template copy."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(..., description="ID of the new draft template copy.")
@@ -102,14 +126,20 @@ class DuplicateBadgeResponse(BaseModel):
     )
     organiser_id: UUID = Field(..., description="Owner of the copy.")
     is_published: bool = Field(..., description="Always False for a new copy.")
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
+    )
     created_at: datetime = Field(..., description="When the copy was created.")
 
 
 class BadgeSummary(BaseModel):
     """Per-item shape for the organiser's template dashboard list.
 
-    canvas_data is intentionally excluded — it is large and not needed
-    for rendering a dashboard card.
+    canvas_data is intentionally excluded — it is large and not needed for rendering a
+    dashboard card.
     """
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -124,6 +154,12 @@ class BadgeSummary(BaseModel):
     )
     is_published: bool = Field(
         ..., description="Whether the template is currently published."
+    )
+    access_type: int = Field(
+        ..., description="0 for public, 1 for private (passcode required)."
+    )
+    access_code: str | None = Field(
+        None, description="The organiser-defined access code (private badges only)."
     )
     share_slug: str | None = Field(
         None,
@@ -149,13 +185,17 @@ class BadgeSummary(BaseModel):
         description="Total badges created from the public page.",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def status(self) -> str:
+        """Determines the current publishing status of the badge as either 'published'
+        or 'draft'."""
         return "published" if self.is_published else "draft"
 
 
 class BadgeListResponse(BaseModel):
+    """Data transfer object representing a paginated collection of badge summaries."""
+
     badges: list[BadgeSummary]
     total: int = Field(..., description="Total badges matching the filter.")
     page: int = Field(..., description="Current page number.")
@@ -164,13 +204,10 @@ class BadgeListResponse(BaseModel):
     next: str | None = Field(None, description="Relative URL to the next page.")
 
 
-class ValidateAccessRequest(BaseModel):
-    access_code: str = Field(
-        ..., description="The access code provided by the participant."
-    )
-
-
 class EditBadgeRequest(BaseModel):
+    """Data transfer object representing a request to edit an existing badge instance,
+    permitting optional field changes."""
+
     title: str | None = None
     canvas_data: dict[str, Any] | None = None
     default_caption: str | None = None
@@ -183,6 +220,7 @@ class EditBadgeRequest(BaseModel):
     @field_validator("title")
     @classmethod
     def title_not_empty(cls, val: str | None) -> str | None:
+        """Validates that the provided title is not empty after stripping whitespace."""
         if val is not None and not val.strip():
             raise ValueError("title cannot be empty")
         return val.strip() if val is not None else val
@@ -190,6 +228,8 @@ class EditBadgeRequest(BaseModel):
     @field_validator("access_code")
     @classmethod
     def validate_access_code(cls, val: str | None) -> str | None:
+        """Validates that the provided access code has a length between 4 and 10
+        characters."""
         if val is not None:
             val = val.strip()
             if not val:
@@ -201,14 +241,17 @@ class EditBadgeRequest(BaseModel):
     @field_validator("hashtags")
     @classmethod
     def clean_hashtags(cls, val: list[str] | None) -> list[str] | None:
+        """Strips whitespace from each hashtag and removes any duplicate tags."""
         if val is None:
             return None
         stripped = [tag.strip() for tag in val if tag.strip()]
-        # Preserve insertion order while deduplicating.
         return list(dict.fromkeys(stripped))
 
 
 class BadgeDetailResponse(BaseModel):
+    """Data transfer object representing full details of a badge template, including
+    analytics counts, logo, and hashtags."""
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
@@ -240,6 +283,9 @@ class BadgeDetailResponse(BaseModel):
 
 
 class PlatformTemplateUsage(BaseModel):
+    """Data transfer object describing the usage count of a specific platform
+    template."""
+
     platform_template_id: UUID = Field(
         ..., description="The platform template the badges are based on."
     )
@@ -247,6 +293,9 @@ class PlatformTemplateUsage(BaseModel):
 
 
 class BadgeAnalyticsResponse(BaseModel):
+    """Data transfer object presenting a summary of the organiser's badge creation and
+    sharing analytics."""
+
     total_organiser_badges: int = Field(
         ...,
         description="Total badges owned by the organiser (excluding soft-deleted).",
@@ -255,10 +304,13 @@ class BadgeAnalyticsResponse(BaseModel):
         ..., description="Count of currently published badges."
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_draft_badges(self) -> int:
-        """Count of draft (unpublished) badges. Derived from total minus active."""
+        """Count of draft (unpublished) badges.
+
+        Derived from total minus active.
+        """
         return self.total_organiser_badges - self.total_active_badges
 
     total_shares: int = Field(

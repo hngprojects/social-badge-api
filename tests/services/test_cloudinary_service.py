@@ -70,8 +70,7 @@ async def test_delete_logo_removes_asset() -> None:
 
 
 async def test_upload_logo_invalid_data_raises() -> None:
-    """Passing garbage bytes that Cloudinary rejects
-    should raise CloudinaryUploadError.
-    """
+    """Passing garbage bytes that Cloudinary rejects should raise
+    CloudinaryUploadError."""
     with pytest.raises(CloudinaryUploadError):
         await upload_logo(b"this-is-not-an-image")

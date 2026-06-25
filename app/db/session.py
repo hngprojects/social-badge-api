@@ -18,5 +18,11 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_session() -> AsyncGenerator[AsyncSession]:
+    """Asynchronously generates and manages an SQLAlchemy database session.
+
+    Yields a database session instance, automatically closing it upon completion or when
+    an exception occurs inside the generator context.
+    """
+
     async with AsyncSessionLocal() as session:
         yield session

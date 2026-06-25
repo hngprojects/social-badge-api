@@ -26,6 +26,12 @@ async def get_current_user(
     redis: RedisClient,
     token: Annotated[str | None, Depends(security)],
 ) -> User:
+    """Validates the caller's JWT access token and retrieves the current user.
+
+    Decodes the access token cookie, verifies that the token's JTI is not revoked
+    (blacklisted), and fetches the associated user record from the database. Acts as the
+    primary authentication gate for general user endpoints.
+    """
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -82,6 +88,12 @@ async def get_current_admin(
     redis: RedisClient,
     token: Annotated[str | None, Depends(security)],
 ) -> User:
+    """Validates the caller's JWT access token and asserts admin role privileges.
+
+    Verifies the access token, checks the token blacklist, retrieves the user, and joins
+    the UserRole and Role tables to verify the user is associated with the 'admin' role.
+    Rejects users lacking the explicit 'admin' role name with a 403 Forbidden.
+    """
     _forbidden = HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin access required",
@@ -124,6 +136,3 @@ async def get_current_admin(
         raise _forbidden
 
     return user
-
-
-CurrentAdmin = Annotated[User, Depends(get_current_admin)]
