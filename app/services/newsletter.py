@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 def _make_unsubscribe_token() -> str:
+    """Generates a secure, cryptographically random hexadecimal unsubscribe token.
+
+    Generates a 64-character hex string to prevent token guessing attacks.
+    """
     return secrets.token_hex(32)
 
 
@@ -20,11 +24,13 @@ async def subscribe(
     session: AsyncSession,
     email: str,
 ) -> tuple[NewsletterSubscriber, bool]:
-    """Subscribe an email to the newsletter.
+    """Subscribes or reactivates an email subscription to the newsletter.
 
-    Returns ``(subscriber, created)`` where *created* is ``True`` for a new or
-    reactivated subscription and ``False`` when already active.  A welcome email
-    is sent (best-effort) whenever *created* is ``True``.
+    Checks if a subscription already exists for the email. If the subscription is
+    active, returns it. If inactive or new, creates/reactivates the record with a fresh
+    unsubscribe token, commits the database session, and sends a welcome newsletter
+    email. Handles potential concurrent subscription race conditions by catching
+    `IntegrityError` and rolling back.
     """
     result = await session.execute(
         select(NewsletterSubscriber).where(NewsletterSubscriber.email == email)
@@ -41,7 +47,6 @@ async def subscribe(
         )
         session.add(subscriber)
     else:
-        # Reactivate a previously unsubscribed address.
         subscriber.is_active = True
         subscriber.unsubscribe_token = _make_unsubscribe_token()
         subscriber.unsubscribed_at = None
@@ -59,7 +64,6 @@ async def subscribe(
             raise RuntimeError(
                 f"Subscriber row missing after IntegrityError for {email!r}"
             ) from None
-        # Another request beat us to it; treat as already-active.
         return subscriber, False
 
     try:
@@ -74,10 +78,14 @@ async def subscribe(
 
 
 async def unsubscribe(session: AsyncSession, token: str) -> bool:
-    """Unsubscribe by token.
+    """Unsubscribes a subscriber from the newsletter using their unique unsubscribe
+    token.
 
-    Returns ``True`` if the token was found (regardless of prior active state)
-    and ``False`` if the token does not exist.
+    Queries the database by token. The operation is idempotent: it only sets `is_active`
+    to False, records the current UTC unsubscription timestamp, and commits when the
+    subscriber is currently active. Repeated calls for an already inactive row return
+    True without issuing another commit or refreshing the timestamp. Returns True if a
+    matching subscriber was found, otherwise False.
     """
     result = await session.execute(
         select(NewsletterSubscriber).where(

@@ -50,6 +50,10 @@ class GoogleOAuthError(Exception):
     """Raised when a Google OAuth flow fails."""
 
     def __init__(self, message: str, status_code: int = 400) -> None:
+        """
+        Initializes the exception - message and HTTP status code
+        (400 as default).
+        """
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -100,8 +104,8 @@ class PublicBadgeNotFoundError(Exception):
 class BadgeRenderError(Exception):
     """Raised when badge rendering fails in a way that prevents any output.
 
-    Optional asset failures (logo, participant photo) are non-fatal and log a
-    warning instead of raising this exception.
+    Optional asset failures (logo, participant photo) are non-fatal and log a warning
+    instead of raising this exception.
     """
 
     pass

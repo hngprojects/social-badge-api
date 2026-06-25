@@ -156,8 +156,8 @@ async def test_patch_unrecognized_keys_ignored(
     client: AsyncClient,
     notifications_user: dict[str, str],
 ) -> None:
-    """Unrecognized keys in the PATCH request body are ignored
-    and valid fields are updated."""
+    """Unrecognized keys in the PATCH request body are ignored and valid fields are
+    updated."""
     await client.post("/api/v1/auth/login", json=notifications_user)
 
     response = await client.patch(

@@ -642,7 +642,6 @@ async def published_template(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Seed a published badge with a slug, logo, and hashtags."""
-
     template = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -814,8 +813,8 @@ async def test_get_participant_page_does_not_increment_share_count(
     """GET /badges/public/{slug} should NOT increment share_count anymore.
 
     Share increments are now decoupled into the dedicated
-    /badges/public/{slug}/increment-share endpoint, called explicitly by
-    the FE on share actions.
+    /badges/public/{slug}/increment-share endpoint, called explicitly by the FE on share
+    actions.
     """
     assert published_template.share_count == 0
 
@@ -990,8 +989,8 @@ async def test_increment_creation_creates_notification_for_owner(
     db_session: AsyncSession,
     published_template: Badge,
 ) -> None:
-    """Calling the public increment-creation endpoint creates a notification
-    for the badge owner."""
+    """Calling the public increment-creation endpoint creates a notification for the
+    badge owner."""
     from app.models.notifications import Notification, NotificationType
 
     response = await client.post(
@@ -1017,8 +1016,8 @@ async def test_increment_creation_respects_owner_toggle(
     db_session: AsyncSession,
     published_template: Badge,
 ) -> None:
-    """If the badge owner has notify_badge_creation off, no notification
-    is created — but the counter still increments."""
+    """If the badge owner has notify_badge_creation off, no notification is created —
+    but the counter still increments."""
     from app.models.notifications import Notification
     from app.services.notification import update_notification_preferences
 
@@ -1170,7 +1169,6 @@ async def source_for_duplicate(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Badge with hashtags, used as the duplication source."""
-
     template = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -1466,6 +1464,8 @@ async def test_list_instances_response_shape(
         "platform_template_id",
         "thumbnail_url",
         "is_published",
+        "access_type",
+        "access_code",
         "status",
         "share_slug",
         "published_at",
@@ -1754,8 +1754,7 @@ async def deletable_template(
         title="To Be Deleted",
         canvas_data={"layout_id": "v1"},
         logo_url=(
-            "https://res.cloudinary.com/mycloud/image/upload/"
-            "template-logos/logo-del.png"
+            "https://res.cloudinary.com/mycloud/image/upload/template-logos/logo-del.png"
         ),
         logo_public_id="template-logos/logo-del",
     )
@@ -1945,7 +1944,6 @@ async def patch_target(
     platform_template: PlatformTemplate,
 ) -> Badge:
     """Template with hashtags used as the target for PATCH tests."""
-
     template = Badge(
         organiser_id=test_user.id,
         platform_template_id=platform_template.id,
@@ -2586,8 +2584,8 @@ async def test_get_public_badge_private_missing_stored_code_returns_403(
     badge: Badge,
     db_session: AsyncSession,
 ) -> None:
-    """Private badge with no stored code fails
-    closed (403) even with a supplied code."""
+    """Private badge with no stored code fails closed (403) even with a supplied
+    code."""
     badge.is_published = True
     badge.share_slug = "private-badge-slug05"
     badge.access_type = 1
