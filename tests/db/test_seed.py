@@ -42,6 +42,21 @@ def patched_session_local(db_session: AsyncSession) -> Iterator[None]:
 
 def test_platform_templates_seed_has_ten_entries() -> None:
     assert len(PLATFORM_TEMPLATES_SEED) == 10
+    baby_shower = next(
+        (t for t in PLATFORM_TEMPLATES_SEED if t["title"] == "Baby Shower"),
+        None,
+    )
+    assert baby_shower is not None
+    assert baby_shower["category"] == "celebration"
+    assert baby_shower["canvas_data"]["layout_id"] == "baby_shower_v1"
+    field_keys = {f["key"] for f in baby_shower["canvas_data"]["fields"]}
+    assert field_keys == {
+        "event_name",
+        "team",
+        "participant_photo",
+        "participant_name",
+        "relationship",
+    }
 
 
 def test_platform_templates_seed_titles_are_unique() -> None:
