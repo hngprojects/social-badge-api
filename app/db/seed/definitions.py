@@ -619,4 +619,82 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
         },
         "thumbnail_url": "https://res.cloudinary.com/dr4shcu93/image/upload/v1780898542/design_3_lzjz4y.webp",
     },
+    # 10. Baby Shower
+    {
+        "title": "Baby Shower",
+        "category": "celebration",
+        "canvas_data": {
+            "layout_id": "baby_shower_v1",
+            "background": {
+                "type": "split",
+                "split_ratio": 0.65,
+                "primary": {
+                    "type": "solid",
+                    "color": "#FEF5FC",
+                    "gradient": None,
+                },
+                "secondary": {
+                    "type": "solid",
+                    "color": "#FAB6E5",
+                    "gradient": None,
+                },
+            },
+            "typography": {
+                "font_family": "DM Sans",
+                "size_px": 19,
+                "weight": "bold",
+                "italic": False,
+                "underline": False,
+            },
+            "logo": {
+                "url": None,
+                "public_id": None,
+                "position": None,
+                "has_logo": False,
+            },
+            "fields": [
+                {
+                    "key": "event_name",
+                    "type": "static",
+                    "label": "Event Name",
+                    "value": "BabyDoe2026",
+                    "visible": True,
+                },
+                {
+                    "key": "team",
+                    "type": "static",
+                    "label": "Team",
+                    "value": "Girl",
+                    "visible": True,
+                },
+                {
+                    "key": "participant_photo",
+                    "type": "participant_upload",
+                    "label": "YOUR PHOTO",
+                    "required": True,
+                    "accepted_formats": ["jpg", "png", "webp"],
+                    "max_size_mb": 5,
+                    "visible": True,
+                },
+                {
+                    "key": "participant_name",
+                    "type": "participant_input",
+                    "label": "NAME",
+                    "placeholder": "Your name",
+                    "required": True,
+                    "visible": True,
+                },
+                {
+                    "key": "relationship",
+                    "type": "participant_input",
+                    "label": "RELATIONSHIP",
+                    "placeholder": "e.g. Uncle",
+                    "required": True,
+                    "visible": True,
+                },
+            ],
+            "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
+        },
+        "thumbnail_url": None,
+    },
 ]
