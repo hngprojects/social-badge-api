@@ -695,6 +695,6 @@ PLATFORM_TEMPLATES_SEED: list[dict[str, Any]] = [
             ],
             "output": {"width_px": 1080, "height_px": 1350, "format": "png"},
         },
-        "thumbnail_url": None,
+        "thumbnail_url": "https://res.cloudinary.com/dqnh5cpel/image/upload/v1785792904/template-logos/Babyshower_Template_udyd04.png",
     },
 ]
